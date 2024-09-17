@@ -1,0 +1,35 @@
+consumerServer:
+  host: localhost
+  port: 5432
+  environment: development
+  rateLimit: 1000
+
+producerServer:
+  host: localhost
+  port: 5432
+  environment: development
+
+db:
+  host: localhost
+  port: 5432
+  username: postgres
+  password: postgres
+  database: postgres
+
+metrics:
+  enabled: true
+  host: localhost
+  port: 4317
+  environment: development
+
+tracing:
+  enabled: true
+  host: localhost
+  port: 4317
+  environment: development
+
+logger:
+  enabled: true
+  level: debug
+  environment: development
+  output: json

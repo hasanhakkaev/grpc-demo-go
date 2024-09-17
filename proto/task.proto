@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package yqappdemo.task;
+
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+import "buf/validate/validate.proto";
+
+
+option go_package = ".;pb";
+
+// TaskState enum for representing the task's state
+enum TaskState {
+  RECEIVED = 0;
+  PROCESSING = 1;
+  DONE = 2;
+}
+
+// Task message to represent the task structure
+message Task {
+  uint32 type = 2 [(buf.validate.field).uint32 = {
+    gt: 0
+    lte: 9
+  }];
+  uint32 value = 3 [(buf.validate.field).uint32 = {
+    gt: 0
+    lte: 99
+  }];
+  TaskState state = 4 [(buf.validate.field).enum = {
+    defined_only: true
+    in: [
+      1,
+      2,
+      3
+    ]
+  }];
+  float creation_time = 1000;
+  float last_update_time = 1001;
+}
+
+message ProduceTaskRequest {
+  task.Task task = 1;  // The task to be sent to the Consumer
+}
+
+// ProducerService for creating and sending tasks
+service ProducerService {
+  // Send a task to the Consumer
+  rpc ProduceTask (ProduceTaskRequest) returns (ProduceTaskResponse);
+}
+
+// ConsumerResponse message for acknowledging task processing
+message ProduceTaskResponse {
+  string message = 1;  // Confirmation or error message from the Consumer
+}
+
+// ProducerRequest message for sending tasks from Producer to Consumer
+message ConsumeTaskRequest {
+  task.Task task = 1;  // The task to be sent to the Consumer
+}
+
+// ConsumerService for receiving and processing tasks
+service ConsumerService {
+  // Consumer receives a task and processes it
+  rpc ConsumeTask (ConsumeTaskRequest) returns (ConsumeTaskResponse);
+}
+
+// ConsumerResponse message for acknowledging task processing
+message ConsumeTaskResponse {
+  string message = 1;  // Confirmation or error message from the Consumer
+}
+
