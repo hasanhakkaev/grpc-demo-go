@@ -1,0 +1,37 @@
+metrics:
+  enabled: true
+  host: localhost
+  port: 4317
+  endpoint: "/metrics"
+  environment: production
+
+tracing:
+  enabled: true
+  host: localhost
+  port: 4317
+  endpoint: "/traces"
+  environment: production
+
+logger:
+  enabled: true
+  level: debug
+  environment: production
+  encoding: json
+
+database:
+  host: localhost
+  port: 5432
+  username: yqapp_demo_user
+  password: myS3cr3tP4ssw0rd
+  database: postgres
+
+consumerService:
+  host: localhost
+  port: 5432
+  messageConsumptionRate: 100
+
+producerService:
+  host: localhost
+  port: 5432
+  messageProductionRate: 1000
+  maxBacklog: 99

@@ -4,12 +4,10 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"github.com/hasanhakkaev/yqapp-demo/assets"
 	"github.com/spf13/viper"
 	"strings"
 )
-
-//go:embed config.yaml
-var defaultConfiguration []byte
 
 func Read() (*Configuration, error) {
 	// Environment variables
@@ -21,7 +19,12 @@ func Read() (*Configuration, error) {
 	viper.SetConfigType("yaml")
 
 	// Read configuration
-	if err := viper.ReadConfig(bytes.NewBuffer(defaultConfiguration)); err != nil {
+	configuration, err := assets.EmbeddedFiles.ReadFile("configuration.yaml")
+	if err != nil {
+		return nil, err
+	}
+
+	if err := viper.ReadConfig(bytes.NewBuffer(configuration)); err != nil {
 		return nil, err
 	}
 
@@ -34,27 +37,26 @@ func Read() (*Configuration, error) {
 }
 
 type Metrics struct {
-	Name        string `env:"NAME" envDefault:"metrics-collector" yaml:"name" `
 	Enabled     bool   `env:"ENABLED" envDefault:"true" yaml:"enabled"`
 	Host        string `env:"HOST" envDefault:"localhost" yaml:"host"`
 	Port        uint16 `env:"PORT" envDefault:"4333" yaml:"port"`
+	Endpoint    string `env:"ENDPOINT" envDefault:"/metrics" yaml:"endpoint"`
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
 }
 
 type Tracing struct {
-	Name        string `env:"NAME" envDefault:"traces-collector" yaml:"name"`
 	Enabled     bool   `env:"ENABLED" envDefault:"true" yaml:"enabled"`
 	Host        string `env:"HOST" envDefault:"localhost" yaml:"host"`
 	Port        uint16 `env:"PORT" envDefault:"4444" yaml:"port"`
+	Endpoint    string `env:"ENDPOINT" envDefault:"/traces" yaml:"endpoint"`
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
 }
 
 type Logger struct {
-	Name        string `env:"NAME" envDefault:"development" yaml:"name"`
 	Enabled     bool   `env:"ENABLED" envDefault:"true" yaml:"enabled"`
-	Level       string `env:"LEVEL" envDefault:"info" yaml:"level"`
+	Level       string `env:"LOG_LEVEL" envDefault:"info" yaml:"level"`
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
-	Output      string `env:"OUTPUT" envDefault:"stdout" yaml:"output"`
+	Encoding    string `env:"OUTPUT" envDefault:"console" yaml:"output"`
 }
 type Database struct {
 	Host     string `env:"HOST" envDefault:"localhost" yaml:"host"`
@@ -65,25 +67,25 @@ type Database struct {
 }
 
 type Consumer struct {
-	Host        string `env:"HOST" envDefault:"localhost" yaml:"host"`
-	Port        uint16 `env:"PORT" envDefault:"5432" yaml:"port"`
-	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
-	RateLimit   uint   `env:"RATE_LIMIT" envDefault:"1000" yaml:"rateLimit"`
+	Host                   string `env:"HOST" envDefault:"localhost" yaml:"host"`
+	Port                   uint16 `env:"PORT" envDefault:"9090" yaml:"port"`
+	MessageConsumptionRate uint   `env:"MESSAGE_CONSUMPTION_RATE" envDefault:"1000" yaml:"messageConsumptionRate"`
 }
 
 type Producer struct {
-	Host        string `env:"HOST" envDefault:"localhost" yaml:"host"`
-	Port        uint16 `env:"PORT" envDefault:"5432" yaml:"port"`
-	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
+	Host                  string `env:"HOST" envDefault:"localhost" yaml:"host"`
+	Port                  uint16 `env:"PORT" envDefault:"8080" yaml:"port"`
+	MessageProductionRate uint   `env:"MESSAGE_PRODUCTION_RATE" envDefault:"1000/s" yaml:"messageProductionRate"`
+	MaxBacklog            uint   `env:"MAX_BACKLOG" envDefault:"10" yaml:"maxBacklog"`
 }
 
 type Configuration struct {
-	ConsumerServer Consumer `env:"CONSUMER" yaml:"consumer"`
-	ProducerServer Producer `env:"PRODUCER" yaml:"producer"`
-	DB             Database `envPrefix:"DATABASE_" yaml:"DB"`
-	Metrics        Metrics  `envPrefix:"METRICS_" yaml:"metrics"`
-	Tracing        Tracing  `envPrefix:"TRACING_" yaml:"tracing"`
-	Logger         Logger   `envPrefix:"LOGGER_" yaml:"logger"`
+	ConsumerService Consumer `env:"CONSUMER" yaml:"consumer"`
+	ProducerService Producer `env:"PRODUCER" yaml:"producer"`
+	Database        Database `envPrefix:"DATABASE_" yaml:"database"`
+	Metrics         Metrics  `envPrefix:"METRICS_" yaml:"metrics"`
+	Tracing         Tracing  `envPrefix:"TRACING_" yaml:"tracing"`
+	Logger          Logger   `envPrefix:"LOGGER_" yaml:"logger"`
 }
 
 func (p Producer) Address() string {

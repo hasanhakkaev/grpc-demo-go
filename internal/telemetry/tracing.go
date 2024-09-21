@@ -34,7 +34,7 @@ func SetupTracing(tracing conf.Tracing) (trace.TracerProvider, tracesdk.SpanExpo
 
 func newTracing(tracing conf.Tracing) (trace.TracerProvider, tracesdk.SpanExporter, error) {
 	ctx := context.Background()
-	res, err := newResource(ctx, tracing.Name, tracing.Environment)
+	res, err := newResource(ctx, "traces", tracing.Environment)
 	if err != nil {
 		return nil, nil, err
 	}

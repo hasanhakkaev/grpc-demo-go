@@ -1,15 +1,16 @@
 package sample
 
 import (
-	pb "github.com/hasanhakkaev/yqapp-demo/proto/gen"
+	v1 "github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	"time"
 )
 
-func NewTask() *pb.Task {
-	task := &pb.Task{
+func NewTask() *v1.Task {
+	task := &v1.Task{
+		Id:             randomID(),
 		Type:           uint32(randomInt(0, 9)),
 		Value:          uint32(randomInt(0, 99)),
-		State:          pb.TaskState_RECEIVED,
+		State:          v1.TaskState_RECEIVED,
 		CreationTime:   float32(time.Now().Unix()),
 		LastUpdateTime: 0.0,
 	}

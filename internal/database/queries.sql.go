@@ -9,12 +9,13 @@ import (
 )
 
 const createTask = `-- name: CreateTask :one
-INSERT INTO tasks (type, value, state, creation_time, last_update_time)
-VALUES ($1, $2, $3, $4, $5)
-    RETURNING id
+INSERT INTO tasks (id,type, value, state, creation_time, last_update_time)
+VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id, type, value, state, creation_time, last_update_time
 `
 
 type CreateTaskParams struct {
+	ID             int32
 	Type           sql.NullInt32
 	Value          sql.NullInt32
 	State          State
@@ -22,17 +23,25 @@ type CreateTaskParams struct {
 	LastUpdateTime float64
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (int32, error) {
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
 	row := q.db.QueryRowContext(ctx, createTask,
+		arg.ID,
 		arg.Type,
 		arg.Value,
 		arg.State,
 		arg.CreationTime,
 		arg.LastUpdateTime,
 	)
-	var id int32
-	err := row.Scan(&id)
-	return id, err
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.Type,
+		&i.Value,
+		&i.State,
+		&i.CreationTime,
+		&i.LastUpdateTime,
+	)
+	return i, err
 }
 
 const getSumOfTasksByState = `-- name: GetSumOfTasksByState :many

@@ -7,16 +7,16 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
-	metric_sdk "go.opentelemetry.io/otel/sdk/metric"
+	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func SetupMetrics(metrics conf.Metrics) (metric.MeterProvider, metric_sdk.Exporter, error) {
+func SetupMetrics(metrics conf.Metrics) (metric.MeterProvider, metricsdk.Exporter, error) {
 	if !metrics.Enabled {
 		return noop.NewMeterProvider(), nil, nil
 	}
 
 	var meterProvider metric.MeterProvider
-	var meterExporter metric_sdk.Exporter
+	var meterExporter metricsdk.Exporter
 
 	switch metrics.Environment {
 	case "production", "staging":
@@ -32,9 +32,9 @@ func SetupMetrics(metrics conf.Metrics) (metric.MeterProvider, metric_sdk.Export
 	return meterProvider, meterExporter, nil
 }
 
-func newMetrics(metrics conf.Metrics) (metric.MeterProvider, metric_sdk.Exporter, error) {
+func newMetrics(metrics conf.Metrics) (metric.MeterProvider, metricsdk.Exporter, error) {
 	ctx := context.Background()
-	res, err := newResource(ctx, metrics.Name, metrics.Environment)
+	res, err := newResource(ctx, "metrics", metrics.Environment)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -46,9 +46,9 @@ func newMetrics(metrics conf.Metrics) (metric.MeterProvider, metric_sdk.Exporter
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}
-	meterProvider := metric_sdk.NewMeterProvider(
-		metric_sdk.WithReader(metric_sdk.NewPeriodicReader(meterExporter)),
-		metric_sdk.WithResource(res),
+	meterProvider := metricsdk.NewMeterProvider(
+		metricsdk.WithReader(metricsdk.NewPeriodicReader(meterExporter)),
+		metricsdk.WithResource(res),
 	)
 	return meterProvider, meterExporter, nil
 }
