@@ -3,10 +3,9 @@ package domain
 import (
 	v1 "github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
-	"github.com/hasanhakkaev/yqapp-demo/internal/serializer"
 )
 
-var _ serializer.API[*v1.Task] = (*Task)(nil)
+//var _ serializer.API[*v1.Task] = (*Task)(nil)
 
 type State string
 
@@ -37,17 +36,47 @@ func (t *Task) ToTaskCreateParams() *database.CreateTaskParams {
 	}
 }
 
-func (t *Task) API() *v1.Task {
-	return &v1.Task{
-		Type:  t.Type,
-		Value: t.Value,
-		State: MapDomainStateToGrpc(t.State),
+func (t *Task) ToTaskUpdateParams() *database.UpdateTaskStateParams {
+	return &database.UpdateTaskStateParams{
+		State:          database.State(t.State),
+		LastUpdateTime: t.LastUpdateTime,
+		ID:             int32(t.ID),
 	}
 }
 
-func (t *Task) FromAPI(in *v1.Task) {
-	t.Type = in.GetType()
-	t.Value = in.GetValue()
-	t.State = MapGrpcStateToDomain(in.GetState())
+func FromProtoToDomain(pbTask *v1.Task) *Task {
+	return &Task{
+		Type:  pbTask.GetType(),
+		Value: pbTask.GetValue(),
+		State: State(pbTask.GetState()),
+	}
+}
 
+func FromDBToDomain(dbTask *database.Task) *Task {
+	return &Task{
+		ID:             uint32(dbTask.ID),
+		Type:           dbTask.Type,
+		Value:          dbTask.Value,
+		State:          State(dbTask.State),
+		CreationTime:   dbTask.CreationTime,
+		LastUpdateTime: dbTask.LastUpdateTime,
+	}
+}
+
+func FromDomainToProto(task *Task) *v1.Task {
+	return &v1.Task{
+		Id:    task.ID,
+		Type:  task.Type,
+		Value: task.Value,
+		State: MapDomainStateToGrpc(task.State),
+	}
+}
+
+func RandomTask() *Task {
+	return &Task{
+		ID:    0,
+		Type:  uint32(RandomInt(0, 9)),
+		Value: uint32(RandomInt(0, 99)),
+		State: StateRECEIVED,
+	}
 }

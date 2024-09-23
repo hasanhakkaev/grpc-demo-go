@@ -6,6 +6,7 @@ import (
 	"github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
+	"github.com/hasanhakkaev/yqapp-demo/internal/domain"
 	"github.com/hasanhakkaev/yqapp-demo/internal/interceptors"
 	"github.com/hasanhakkaev/yqapp-demo/internal/service"
 	"github.com/hasanhakkaev/yqapp-demo/internal/telemetry"
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
@@ -28,9 +30,9 @@ func registerServices(srv *grpc.Server, svc Services) {
 }
 
 // setupServices initializes the Server Services.
-func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider metric.MeterProvider) Services {
+func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider metric.MeterProvider, taskChannel chan *domain.Task) Services {
 	logger.Debug("Initializing services")
-	taskService := service.NewTaskService(logger, queries, meterProvider.Meter("task.service"))
+	taskService := service.NewTaskService(logger, queries, meterProvider.Meter("task.service"), taskChannel)
 	healthService := health.NewServer()
 	return Services{
 		TaskService: taskService,
@@ -74,8 +76,9 @@ func NewDSNFromConfig(db conf.Database) string {
 
 // Setup creates a new application using the given ServerConfig.
 func Setup(cfg conf.Configuration) (Server, error) {
+	taskChannel := make(chan *domain.Task, 100) // Buffered channel, size 100
 
-	telemeter, err := telemetry.SetupTelemetry(cfg.Logger, cfg.Metrics)
+	telemeter, err := telemetry.SetupTelemetry(cfg, "consumer")
 	if err != nil {
 		return Server{}, err
 	}
@@ -89,6 +92,10 @@ func Setup(cfg conf.Configuration) (Server, error) {
 
 	queries := database.New(db.DB)
 
+	limiter := rate.NewLimiter(rate.Limit(cfg.ConsumerService.MessageConsumptionRate), 1)
+
+	// Start consuming tasks in a separate goroutine
+
 	l, err := setupListener(cfg, telemeter.Logger)
 	if err != nil {
 		return Server{}, err
@@ -97,11 +104,13 @@ func Setup(cfg conf.Configuration) (Server, error) {
 	srv := grpc.NewServer(interceptors.NewServerInterceptors(telemeter)...)
 	reflection.Register(srv)
 
-	svc := setupServices(queries, telemeter.Logger, telemeter.MeterProvider)
+	svc := setupServices(queries, telemeter.Logger, telemeter.MeterProvider, taskChannel)
 	registerServices(srv, svc)
 
+	go svc.TaskService.ConsumeTasks(taskChannel, limiter)
+
 	metricsServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Metrics.Port),
+		Addr:    fmt.Sprintf("0.0.0.0:%s", cfg.GetConsumerMetricsPort()),
 		Handler: promhttp.Handler(),
 	}
 

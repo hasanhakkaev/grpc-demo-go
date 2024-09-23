@@ -8,22 +8,33 @@ import (
 )
 
 // SetupLogger initializes a new Zap Logger with the parameters specified by the given ServerConfig.
-func SetupLogger(logs conf.Logger) (*zap.Logger, error) {
+func SetupLogger(cfg conf.Configuration, targetService string) (*zap.Logger, error) {
 	var (
 		encoderCfg    zapcore.EncoderConfig
 		isDevelopment bool
+		logLevel      string
+		logEncoding   string
 	)
 
-	if !logs.Enabled {
+	if !cfg.Logger.Enabled {
 		return zap.NewNop(), nil
 	}
 
-	level, err := zap.ParseAtomicLevel(logs.Level)
+	switch targetService {
+	case "producer":
+		logLevel = cfg.GetProducerLogLevel()
+		logEncoding = cfg.GetProducerLogEncoding()
+	default:
+		logLevel = cfg.GetConsumerLogLevel()
+		logEncoding = cfg.GetConsumerLogEncoding()
+	}
+
+	level, err := zap.ParseAtomicLevel(logLevel)
 	if err != nil {
 		return nil, err
 	}
 
-	switch logs.Environment {
+	switch cfg.Logger.Environment {
 	case "production":
 		encoderCfg = zap.NewProductionEncoderConfig()
 		encoderCfg.TimeKey = "timestamp"
@@ -41,7 +52,7 @@ func SetupLogger(logs conf.Logger) (*zap.Logger, error) {
 		DisableCaller:     false,
 		DisableStacktrace: false,
 		Sampling:          nil,
-		Encoding:          logs.Encoding,
+		Encoding:          logEncoding,
 		EncoderConfig:     encoderCfg,
 		OutputPaths: []string{
 			"stderr",

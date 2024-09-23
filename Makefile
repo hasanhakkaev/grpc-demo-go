@@ -72,8 +72,8 @@ migrations/down:
 
 ## monitoring-up: start Monitoring stack
 monitoring-up:
-	@$HOSTNAME=$(hostname) docker stack deploy -c deployment/local/monitoring/docker-stack.yaml ${MONITORING_STACK}
+	@docker-compose -f deployment/local/monitoring/monitoring.yaml up -d
 
 ## monitoring-down: stop Monitoring Stack
 monitoring-down:
-	@docker stack rm ${MONITORING_STACK}
+	@docker-compose  -f deployment/local/monitoring/monitoring.yaml down

@@ -19,7 +19,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"strconv"
 )
 
 var (
@@ -50,54 +49,72 @@ var (
 	)
 )
 
-type tasks struct {
+type TaskService struct {
 	v1.UnimplementedTaskServiceServer
-	logger  *zap.Logger
-	queries *database.Queries
-	meter   metric.Meter
+	logger      *zap.Logger
+	queries     *database.Queries
+	meter       metric.Meter
+	taskChannel chan *domain.Task
 }
 
 // NewTaskService initializes a new v1.TaskProducerServiceServer implementation.
-func NewTaskService(logger *zap.Logger, queries *database.Queries, meter metric.Meter) v1.TaskServiceServer {
-	return &tasks{
-		logger:  logger,
-		queries: queries,
-		meter:   meter,
+func NewTaskService(logger *zap.Logger, queries *database.Queries, meter metric.Meter, taskChannel chan *domain.Task) *TaskService {
+	return &TaskService{
+		logger:      logger,
+		queries:     queries,
+		meter:       meter,
+		taskChannel: taskChannel,
 	}
 }
 
-func (svc *tasks) CreateTask(ctx context.Context, request *v1.CreateTaskRequest) (*v1.Task, error) {
+func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRequest) (*v1.Task, error) {
+	taskChannel := make(chan *domain.Task, 100) // Buffered channel
 
-	svc.logger.Log(svc.logger.Level(), "Creating task")
+	svc.logger.Log(svc.logger.Level(), "Received task creation request")
 	span := trace.SpanFromContext(ctx)
 	defer span.End()
 
-	var task domain.Task
-
-	svc.logger.Log(svc.logger.Level(), "Filling out task information")
 	span.AddEvent("Parsing task from API request")
+	svc.logger.Log(svc.logger.Level(), "Parsing task from API request")
 
-	task.FromAPI(request.GetTask())
+	domainTask := domain.FromProtoToDomain(request.GetTask())
 
-	task.CreationTime = float64(float32(time.Now().Unix()))
-	task.LastUpdateTime = 0
+	domainTask.State = domain.StateRECEIVED
+	domainTask.CreationTime = float64(time.Now().Unix())
+	domainTask.LastUpdateTime = 0
+	svc.logger.Log(svc.logger.Level(), "Filling out task information")
+
+	taskParams := domainTask.ToTaskCreateParams()
 
 	span.AddEvent("Persisting task in the database")
+	svc.logger.Log(svc.logger.Level(), "Persisting task in the database")
 
-	taskFromDB, err := svc.queries.CreateTask(ctx, *task.ToTaskCreateParams())
+	dbTaskID, err := svc.queries.CreateTask(ctx, *taskParams)
 	if err != nil {
-		svc.logger.Log(svc.logger.Level(), "Failed to create task", zap.Error(err))
+		svc.logger.Log(svc.logger.Level(), "Failed to persist task in the database", zap.Error(err))
 		span.RecordError(err)
 		return nil, status.Error(codes.Unavailable, "failed to create task")
 	}
 
-	svc.logger.Log(svc.logger.Level(), "Returning created task", zap.String("task.id", strconv.Itoa(int(taskFromDB.ID))))
-	return task.API(), nil
+	domainTask.ID = uint32(dbTaskID)
+
+	// After persisting task in DB
+	taskChannel <- domainTask
+
+	limiter := rate.NewLimiter(1, 1)
+
+	go svc.ConsumeTasks(taskChannel, limiter)
+
+	span.AddEvent("Task in the database persisted!")
+	svc.logger.Log(svc.logger.Level(), "Task in the database persisted!")
+	processingTasks.Inc()
+	svc.logger.Log(svc.logger.Level(), "Returning created task", zap.Int("task.id", int(dbTaskID)))
+	return domain.FromDomainToProto(domainTask), nil
 
 }
 
 // ProcessTask processes a single task, updating its state and tracking metrics.
-func (svc *tasks) ProcessTask(ctx context.Context, task *domain.Task) error {
+func (svc *TaskService) ProcessTask(ctx context.Context, task *domain.Task) error {
 	svc.logger.Info("Handling task", zap.Int("task.id", int(task.ID)))
 
 	// Update task state to "processing"
@@ -154,7 +171,7 @@ func (svc *tasks) ProcessTask(ctx context.Context, task *domain.Task) error {
 }
 
 // ConsumeTasks handles incoming tasks with a rate limiter.
-func (svc *tasks) ConsumeTasks(taskChannel <-chan *domain.Task, limiter *rate.Limiter) {
+func (svc *TaskService) ConsumeTasks(taskChannel <-chan *domain.Task, limiter *rate.Limiter) {
 	for task := range taskChannel {
 		// Apply rate limiting
 		err := limiter.Wait(context.Background())

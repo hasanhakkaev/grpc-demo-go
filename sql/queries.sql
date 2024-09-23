@@ -1,7 +1,7 @@
 -- name: CreateTask :one
 INSERT INTO tasks (type, value, state, creation_time, last_update_time)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, type, value, state, creation_time, last_update_time;
+RETURNING id;
 
 -- name: UpdateTaskState :one
 UPDATE tasks

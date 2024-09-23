@@ -12,7 +12,7 @@ import (
 const createTask = `-- name: CreateTask :one
 INSERT INTO tasks (type, value, state, creation_time, last_update_time)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, type, value, state, creation_time, last_update_time
+RETURNING id
 `
 
 type CreateTaskParams struct {
@@ -23,7 +23,7 @@ type CreateTaskParams struct {
 	LastUpdateTime float64
 }
 
-func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, error) {
+func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (int32, error) {
 	row := q.db.QueryRow(ctx, createTask,
 		arg.Type,
 		arg.Value,
@@ -31,16 +31,9 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		arg.CreationTime,
 		arg.LastUpdateTime,
 	)
-	var i Task
-	err := row.Scan(
-		&i.ID,
-		&i.Type,
-		&i.Value,
-		&i.State,
-		&i.CreationTime,
-		&i.LastUpdateTime,
-	)
-	return i, err
+	var id int32
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getSumOfTasksByState = `-- name: GetSumOfTasksByState :many

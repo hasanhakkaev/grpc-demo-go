@@ -2,9 +2,9 @@ package server
 
 import (
 	"context"
-	"github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
+	"github.com/hasanhakkaev/yqapp-demo/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
 	"go.opentelemetry.io/otel/metric"
@@ -20,7 +20,7 @@ import (
 
 // Services groups all the services exposed by a single gRPC Server.
 type Services struct {
-	TaskService v1.TaskServiceServer
+	TaskService *service.TaskService
 	Health      *health.Server
 }
 

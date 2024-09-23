@@ -10,18 +10,18 @@ import (
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
 )
 
-func SetupMetrics(metrics conf.Metrics) (metric.MeterProvider, metricsdk.Exporter, error) {
-	if !metrics.Enabled {
+func SetupMetrics(conf conf.Configuration, targetService string) (metric.MeterProvider, metricsdk.Exporter, error) {
+	if !conf.Metrics.Enabled {
 		return noop.NewMeterProvider(), nil, nil
 	}
 
 	var meterProvider metric.MeterProvider
 	var meterExporter metricsdk.Exporter
 
-	switch metrics.Environment {
+	switch conf.Metrics.Environment {
 	case "production", "staging":
 		var err error
-		meterProvider, meterExporter, err = newMetrics(metrics)
+		meterProvider, meterExporter, err = newMetrics(conf, targetService)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -32,17 +32,25 @@ func SetupMetrics(metrics conf.Metrics) (metric.MeterProvider, metricsdk.Exporte
 	return meterProvider, meterExporter, nil
 }
 
-func newMetrics(metrics conf.Metrics) (metric.MeterProvider, metricsdk.Exporter, error) {
+func newMetrics(conf conf.Configuration, targetService string) (metric.MeterProvider, metricsdk.Exporter, error) {
 	ctx := context.Background()
-	res, err := newResource(ctx, "metrics", metrics.Environment)
+	res, err := newResource(ctx, "metrics", conf.Metrics.Environment)
 	if err != nil {
 		return nil, nil, err
 	}
-	conn, err := newClient(metrics.Address())
+	var address string
+	switch targetService {
+	case "producer":
+		address = fmt.Sprintf("%s:%s", "0.0.0.0", conf.GetProducerMetricsPort())
+
+	default:
+		address = fmt.Sprintf("%s:%s", "0.0.0.0", conf.GetConsumerMetricsPort())
+	}
+	conn, err := newClient(address)
 	if err != nil {
 		return nil, nil, err
 	}
-	meterExporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithGRPCConn(conn))
+	meterExporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithGRPCConn(conn), otlpmetricgrpc.WithInsecure())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}

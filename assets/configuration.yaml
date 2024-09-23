@@ -1,15 +1,11 @@
 metrics:
   enabled: true
-  host: localhost
-  port: 4317
   endpoint: "/metrics"
   environment: production
 
 logger:
   enabled: true
-  level: debug
   environment: production
-  encoding: console
 
 database:
   host: localhost
@@ -20,18 +16,24 @@ database:
   database: postgres
 
 consumerService:
-  messageConsumptionRate: 100
+  messageConsumptionRate: 1
+  logLevel: debug
+  logEncoding: json
+  metricsPort: 4317
 
 producerService:
-  messageProductionRate: 1000
-  maxBacklog: 99
+  messageProductionRate: 10
+  maxBacklog: 100
+  logLevel: info
+  logEncoding: console
+  metricsPort: 4000
 
 server:
   name: yqapp-demo-server
   environment: production
   host: 0.0.0.0
-  port: 3030
+  port: 50051
 
 client:
-  name: yqapp-demo-server
+  name: yqapp-demo-client
   environment: production

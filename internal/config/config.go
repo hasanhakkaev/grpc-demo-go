@@ -13,7 +13,6 @@ import (
 func Read() (*Configuration, error) {
 	// Environment variables
 	viper.AutomaticEnv()
-	viper.SetEnvPrefix("APP")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
 	// Configuration file
@@ -39,17 +38,13 @@ func Read() (*Configuration, error) {
 
 type Metrics struct {
 	Enabled     bool   `env:"ENABLED" envDefault:"true" yaml:"enabled"`
-	Host        string `env:"HOST" envDefault:"localhost" yaml:"host"`
-	Port        uint16 `env:"PORT" envDefault:"4333" yaml:"port"`
 	Endpoint    string `env:"ENDPOINT" envDefault:"/metrics" yaml:"endpoint"`
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
 }
 
 type Logger struct {
 	Enabled     bool   `env:"ENABLED" envDefault:"true" yaml:"enabled"`
-	Level       string `env:"LOG_LEVEL" envDefault:"info" yaml:"level"`
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
-	Encoding    string `env:"OUTPUT" envDefault:"console" yaml:"output"`
 }
 type Database struct {
 	Host     string `env:"HOST" envDefault:"localhost" yaml:"host"`
@@ -61,19 +56,30 @@ type Database struct {
 }
 
 type Consumer struct {
-	MessageConsumptionRate uint `env:"MESSAGE_CONSUMPTION_RATE" envDefault:"1000" yaml:"messageConsumptionRate"`
+	MessageConsumptionRate uint   `env:"MESSAGE_CONSUMPTION_RATE" envDefault:"1000" yaml:"messageConsumptionRate"`
+	LogLevel               string `env:"LOG_LEVEL" envDefault:"info" yaml:"logLevel"`
+	LogEncoding            string `env:"LOG_ENCODING" yaml:"logEncoding"`
+	MetricsPort            uint16 `ENV:"METRICS_PORT" envDefault:"5000" yaml:"metricsPort"`
 }
 
 type Producer struct {
-	MessageProductionRate uint `env:"MESSAGE_PRODUCTION_RATE" envDefault:"1000/s" yaml:"messageProductionRate"`
-	MaxBacklog            uint `env:"MAX_BACKLOG" envDefault:"10" yaml:"maxBacklog"`
+	MessageProductionRate uint   `env:"MESSAGE_PRODUCTION_RATE" envDefault:"1000/s" yaml:"messageProductionRate"`
+	MaxBacklog            uint   `env:"MAX_BACKLOG" envDefault:"10" yaml:"maxBacklog"`
+	LogLevel              string `env:"LOG_LEVEL" envDefault:"info" yaml:"logLevel"`
+	LogEncoding           string `env:"LOG_ENCODING" yaml:"logEncoding"`
+	MetricsPort           uint16 `ENV:"METRICS_PORT" envDefault:"5000" yaml:"metricsPort"`
 }
 
 type Server struct {
-	Name        string `env:"NAME" envDefault:"app" yaml:"name"`
+	Name        string `env:"NAME" envDefault:"yqapp-demo-server" yaml:"name"`
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
 	Host        string `env:"HOST" envDefault:"localhost" yaml:"host"`
 	Port        uint16 `env:"PORT" envDefault:"8080" yaml:"port"`
+}
+
+type Client struct {
+	Name        string `env:"NAME" envDefault:"yqapp-demo-client" yaml:"name"`
+	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
 }
 type Configuration struct {
 	Server          Server   `yaml:"server" yaml:"server"`
@@ -82,10 +88,31 @@ type Configuration struct {
 	Database        Database `envPrefix:"DATABASE_" yaml:"database"`
 	Metrics         Metrics  `envPrefix:"METRICS_" yaml:"metrics"`
 	Logger          Logger   `envPrefix:"LOGGER_" yaml:"logger"`
+	Client          Client   `envPrefix:"CLIENT" yaml:"client"`
 }
 
-func (m Metrics) Address() string {
-	return fmt.Sprintf("%s:%d", m.Host, m.Port)
+func (c Configuration) GetProducerMetricsPort() string {
+	return fmt.Sprintf("%d", c.ProducerService.MetricsPort)
+}
+
+func (c Configuration) GetProducerLogLevel() string {
+	return c.ProducerService.LogLevel
+}
+
+func (c Configuration) GetProducerLogEncoding() string {
+	return c.ProducerService.LogEncoding
+}
+
+func (c Configuration) GetConsumerMetricsPort() string {
+	return fmt.Sprintf("%d", c.ConsumerService.MetricsPort)
+}
+
+func (c Configuration) GetConsumerLogLevel() string {
+	return c.ConsumerService.LogLevel
+}
+
+func (c Configuration) GetConsumerLogEncoding() string {
+	return c.ConsumerService.LogEncoding
 }
 
 // Address returns the configuration needed to initialize a net.Listener instance.

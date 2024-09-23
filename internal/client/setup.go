@@ -5,10 +5,12 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
+	"github.com/hasanhakkaev/yqapp-demo/internal/domain"
 	"github.com/hasanhakkaev/yqapp-demo/internal/telemetry"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"io"
@@ -18,19 +20,12 @@ import (
 // Setup creates a new application using the given ServerConfig.
 func Setup(cfg conf.Configuration) (Client, error) {
 
-	telemeter, err := telemetry.SetupTelemetry(cfg.Logger, cfg.Metrics)
+	telemeter, err := telemetry.SetupTelemetry(cfg, "producer")
 	if err != nil {
 		return Client{}, err
 	}
 
-	telemeter.Logger.Debug("Initializing client", zap.String("client.name", cfg.Server.Name), zap.String("server.environment", cfg.Server.Environment))
-
-	db, err := setupDB(cfg, telemeter.Logger)
-	if err != nil {
-		return Client{}, err
-	}
-
-	queries := database.New(db.DB)
+	telemeter.Logger.Debug("Initializing client", zap.String("client.name", cfg.Client.Name), zap.String("client.environment", cfg.Server.Environment))
 
 	cc, err := grpc.NewClient(cfg.Server.URI(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -40,15 +35,17 @@ func Setup(cfg conf.Configuration) (Client, error) {
 	taskClient := NewTaskClient(cc)
 
 	metricsServer := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Metrics.Port),
+		Addr:    fmt.Sprintf(":%s", cfg.GetProducerMetricsPort()),
 		Handler: promhttp.Handler(),
 	}
+
+	limiter := rate.NewLimiter(rate.Limit(cfg.ProducerService.MessageProductionRate), 1)
+
+	taskQueue := make(chan *domain.Task, cfg.ProducerService.MaxBacklog)
 
 	return Client{
 		task:          *taskClient,
 		logger:        telemeter.Logger,
-		db:            db,
-		queries:       queries,
 		meterProvider: telemeter.MeterProvider,
 		shutdown: []shutDowner{
 			telemeter.TraceExporter,
@@ -59,6 +56,8 @@ func Setup(cfg conf.Configuration) (Client, error) {
 		},
 		cfg:           cfg,
 		metricsServer: metricsServer,
+		taskQueue:     taskQueue,
+		rateLimiter:   limiter,
 	}, nil
 }
 
