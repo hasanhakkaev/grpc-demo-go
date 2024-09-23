@@ -1,1 +1,0 @@
-DROP SCHEMA yqapp_demo_schema;

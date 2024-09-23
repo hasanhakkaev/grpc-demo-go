@@ -10,12 +10,12 @@ func main() {
 	if err != nil {
 		log.Fatalln("reading config failed", err)
 	}
-	producer, err := client.Setup(cfg)
+	s, err := client.Setup(*cfg)
 	if err != nil {
-		log.Fatalln("setup producer failed", err)
+		log.Fatalln("setup consumer failed", err)
 	}
-	if err := producer.Run(producer); err != nil {
-		log.Fatalln("run producer failed", err)
+	if err := client.Run(s); err != nil {
+		log.Fatalln("run consumer failed", err)
 	}
-	log.Println("Closing producer...")
+	log.Println("Closing consuper...")
 }

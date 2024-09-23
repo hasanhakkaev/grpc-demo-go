@@ -19,207 +19,103 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TaskProducerService_CreateTask_FullMethodName = "/api.tasks.v1.TaskProducerService/CreateTask"
+	TaskService_CreateTask_FullMethodName = "/api.tasks.v1.TaskService/CreateTask"
 )
 
-// TaskProducerServiceClient is the client API for TaskProducerService service.
+// TaskServiceClient is the client API for TaskService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type TaskProducerServiceClient interface {
+type TaskServiceClient interface {
 	// Send a task to the Consumer
 	CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*Task, error)
 }
 
-type taskProducerServiceClient struct {
+type taskServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewTaskProducerServiceClient(cc grpc.ClientConnInterface) TaskProducerServiceClient {
-	return &taskProducerServiceClient{cc}
+func NewTaskServiceClient(cc grpc.ClientConnInterface) TaskServiceClient {
+	return &taskServiceClient{cc}
 }
 
-func (c *taskProducerServiceClient) CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*Task, error) {
+func (c *taskServiceClient) CreateTask(ctx context.Context, in *CreateTaskRequest, opts ...grpc.CallOption) (*Task, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Task)
-	err := c.cc.Invoke(ctx, TaskProducerService_CreateTask_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, TaskService_CreateTask_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// TaskProducerServiceServer is the server API for TaskProducerService service.
-// All implementations must embed UnimplementedTaskProducerServiceServer
+// TaskServiceServer is the server API for TaskService service.
+// All implementations must embed UnimplementedTaskServiceServer
 // for forward compatibility.
-type TaskProducerServiceServer interface {
+type TaskServiceServer interface {
 	// Send a task to the Consumer
 	CreateTask(context.Context, *CreateTaskRequest) (*Task, error)
-	mustEmbedUnimplementedTaskProducerServiceServer()
+	mustEmbedUnimplementedTaskServiceServer()
 }
 
-// UnimplementedTaskProducerServiceServer must be embedded to have
+// UnimplementedTaskServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedTaskProducerServiceServer struct{}
+type UnimplementedTaskServiceServer struct{}
 
-func (UnimplementedTaskProducerServiceServer) CreateTask(context.Context, *CreateTaskRequest) (*Task, error) {
+func (UnimplementedTaskServiceServer) CreateTask(context.Context, *CreateTaskRequest) (*Task, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateTask not implemented")
 }
-func (UnimplementedTaskProducerServiceServer) mustEmbedUnimplementedTaskProducerServiceServer() {}
-func (UnimplementedTaskProducerServiceServer) testEmbeddedByValue()                             {}
+func (UnimplementedTaskServiceServer) mustEmbedUnimplementedTaskServiceServer() {}
+func (UnimplementedTaskServiceServer) testEmbeddedByValue()                     {}
 
-// UnsafeTaskProducerServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to TaskProducerServiceServer will
+// UnsafeTaskServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to TaskServiceServer will
 // result in compilation errors.
-type UnsafeTaskProducerServiceServer interface {
-	mustEmbedUnimplementedTaskProducerServiceServer()
+type UnsafeTaskServiceServer interface {
+	mustEmbedUnimplementedTaskServiceServer()
 }
 
-func RegisterTaskProducerServiceServer(s grpc.ServiceRegistrar, srv TaskProducerServiceServer) {
-	// If the following call pancis, it indicates UnimplementedTaskProducerServiceServer was
+func RegisterTaskServiceServer(s grpc.ServiceRegistrar, srv TaskServiceServer) {
+	// If the following call pancis, it indicates UnimplementedTaskServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&TaskProducerService_ServiceDesc, srv)
+	s.RegisterService(&TaskService_ServiceDesc, srv)
 }
 
-func _TaskProducerService_CreateTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _TaskService_CreateTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CreateTaskRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TaskProducerServiceServer).CreateTask(ctx, in)
+		return srv.(TaskServiceServer).CreateTask(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: TaskProducerService_CreateTask_FullMethodName,
+		FullMethod: TaskService_CreateTask_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TaskProducerServiceServer).CreateTask(ctx, req.(*CreateTaskRequest))
+		return srv.(TaskServiceServer).CreateTask(ctx, req.(*CreateTaskRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// TaskProducerService_ServiceDesc is the grpc.ServiceDesc for TaskProducerService service.
+// TaskService_ServiceDesc is the grpc.ServiceDesc for TaskService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var TaskProducerService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "api.tasks.v1.TaskProducerService",
-	HandlerType: (*TaskProducerServiceServer)(nil),
+var TaskService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "api.tasks.v1.TaskService",
+	HandlerType: (*TaskServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "CreateTask",
-			Handler:    _TaskProducerService_CreateTask_Handler,
-		},
-	},
-	Streams:  []grpc.StreamDesc{},
-	Metadata: "task.proto",
-}
-
-const (
-	TaskConsumerService_GetTask_FullMethodName = "/api.tasks.v1.TaskConsumerService/GetTask"
-)
-
-// TaskConsumerServiceClient is the client API for TaskConsumerService service.
-//
-// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type TaskConsumerServiceClient interface {
-	// Process the task
-	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*Task, error)
-}
-
-type taskConsumerServiceClient struct {
-	cc grpc.ClientConnInterface
-}
-
-func NewTaskConsumerServiceClient(cc grpc.ClientConnInterface) TaskConsumerServiceClient {
-	return &taskConsumerServiceClient{cc}
-}
-
-func (c *taskConsumerServiceClient) GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*Task, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Task)
-	err := c.cc.Invoke(ctx, TaskConsumerService_GetTask_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// TaskConsumerServiceServer is the server API for TaskConsumerService service.
-// All implementations must embed UnimplementedTaskConsumerServiceServer
-// for forward compatibility.
-type TaskConsumerServiceServer interface {
-	// Process the task
-	GetTask(context.Context, *GetTaskRequest) (*Task, error)
-	mustEmbedUnimplementedTaskConsumerServiceServer()
-}
-
-// UnimplementedTaskConsumerServiceServer must be embedded to have
-// forward compatible implementations.
-//
-// NOTE: this should be embedded by value instead of pointer to avoid a nil
-// pointer dereference when methods are called.
-type UnimplementedTaskConsumerServiceServer struct{}
-
-func (UnimplementedTaskConsumerServiceServer) GetTask(context.Context, *GetTaskRequest) (*Task, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetTask not implemented")
-}
-func (UnimplementedTaskConsumerServiceServer) mustEmbedUnimplementedTaskConsumerServiceServer() {}
-func (UnimplementedTaskConsumerServiceServer) testEmbeddedByValue()                             {}
-
-// UnsafeTaskConsumerServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to TaskConsumerServiceServer will
-// result in compilation errors.
-type UnsafeTaskConsumerServiceServer interface {
-	mustEmbedUnimplementedTaskConsumerServiceServer()
-}
-
-func RegisterTaskConsumerServiceServer(s grpc.ServiceRegistrar, srv TaskConsumerServiceServer) {
-	// If the following call pancis, it indicates UnimplementedTaskConsumerServiceServer was
-	// embedded by pointer and is nil.  This will cause panics if an
-	// unimplemented method is ever invoked, so we test this at initialization
-	// time to prevent it from happening at runtime later due to I/O.
-	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
-		t.testEmbeddedByValue()
-	}
-	s.RegisterService(&TaskConsumerService_ServiceDesc, srv)
-}
-
-func _TaskConsumerService_GetTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetTaskRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(TaskConsumerServiceServer).GetTask(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: TaskConsumerService_GetTask_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TaskConsumerServiceServer).GetTask(ctx, req.(*GetTaskRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// TaskConsumerService_ServiceDesc is the grpc.ServiceDesc for TaskConsumerService service.
-// It's only intended for direct use with grpc.RegisterService,
-// and not to be introspected or modified (even as a copy)
-var TaskConsumerService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "api.tasks.v1.TaskConsumerService",
-	HandlerType: (*TaskConsumerServiceServer)(nil),
-	Methods: []grpc.MethodDesc{
-		{
-			MethodName: "GetTask",
-			Handler:    _TaskConsumerService_GetTask_Handler,
+			Handler:    _TaskService_CreateTask_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

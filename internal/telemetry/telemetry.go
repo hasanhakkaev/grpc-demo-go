@@ -19,16 +19,11 @@ type Telemetry struct {
 	Propagator     propagation.TextMapPropagator
 }
 
-func SetupTelemetry(logging conf.Logger, tracing conf.Tracing, metrics conf.Metrics) (Telemetry, error) {
+func SetupTelemetry(logging conf.Logger, metrics conf.Metrics) (Telemetry, error) {
 	var t Telemetry
 	var err error
 
 	t.Logger, err = SetupLogger(logging)
-	if err != nil {
-		return Telemetry{}, err
-	}
-
-	t.TracerProvider, t.TraceExporter, err = SetupTracing(tracing)
 	if err != nil {
 		return Telemetry{}, err
 	}

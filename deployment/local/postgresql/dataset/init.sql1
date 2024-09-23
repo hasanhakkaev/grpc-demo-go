@@ -1,0 +1,40 @@
+-- Create schema if it does not exist
+CREATE SCHEMA IF NOT EXISTS yqapp_demo_schema;
+
+-- Create the role (you don't need to associate this with the user directly as we'll handle permissions at the user level)
+CREATE ROLE yqapp_demo_role;
+
+-- Create the user with a password and assign them the role
+CREATE USER yqapp_demo_user WITH LOGIN PASSWORD 'myS3cr3tP4ssw0rd';
+
+-- Grant all privileges on the newly created schema to the user
+GRANT ALL PRIVILEGES ON SCHEMA yqapp_demo_schema TO yqapp_demo_user;
+
+-- Assign the created role to the user (optional, depends on your usage)
+GRANT yqapp_demo_role TO yqapp_demo_user;
+
+-- Grant usage on the public schema so the user can access it
+GRANT USAGE ON SCHEMA public TO yqapp_demo_user;
+
+-- Allow the user to create tables, sequences, etc., in the yqapp_demo_schema schema
+GRANT CREATE ON SCHEMA yqapp_demo_schema TO yqapp_demo_user;
+
+-- Allow the user to create tables, sequences, etc., in the public schema
+GRANT CREATE ON SCHEMA public TO yqapp_demo_user;
+
+-- Grant all privileges on all tables and sequences (for future objects) in the yqapp_demo_schema schema
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA yqapp_demo_schema TO yqapp_demo_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA yqapp_demo_schema TO yqapp_demo_user;
+
+-- Ensure that future tables and sequences created in the yqapp_demo_schema schema automatically grant privileges to the user
+ALTER DEFAULT PRIVILEGES IN SCHEMA yqapp_demo_schema
+    GRANT ALL PRIVILEGES ON TABLES TO yqapp_demo_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA yqapp_demo_schema
+    GRANT ALL PRIVILEGES ON SEQUENCES TO yqapp_demo_user;
+
+-- Allow the user to write (insert/update/delete) to tables in the public schema
+GRANT INSERT, UPDATE, DELETE, SELECT ON ALL TABLES IN SCHEMA public TO yqapp_demo_user;
+
+-- Ensure that future tables created in the public schema allow the user to write
+ALTER DEFAULT PRIVILEGES IN SCHEMA public
+    GRANT INSERT, UPDATE, DELETE, SELECT ON TABLES TO yqapp_demo_user;

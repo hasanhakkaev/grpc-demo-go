@@ -7,3 +7,9 @@ sql:
       go:
         package: "database"
         out: "internal/database"
+        sql_package: "pgx/v5"
+        overrides:
+          - column: "tasks.type"
+            go_type: "uint32"
+          - column: "tasks.value"
+            go_type: "uint32"

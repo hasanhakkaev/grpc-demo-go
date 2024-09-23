@@ -1,4 +1,4 @@
-package server
+package client
 
 import (
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"

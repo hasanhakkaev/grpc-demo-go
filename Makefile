@@ -2,7 +2,7 @@
 # HELPERS
 # ==================================================================================== #
 DB_DSN ?= postgres:postgres@localhost:5432/postgres?sslmode=disable
-
+MONITORING_STACK ?= prom
 ## help: print this help message
 .PHONY: help
 help:
@@ -54,11 +54,11 @@ generate:
 .PHONY: db-up
 db-up:
 	@ echo "Starting database ..."
-	@docker run --rm -it --name yqapp-demo_db -e POSTGRES_PASSWORD=postgres -d -p 5432:5432 postgres:13
+	@docker-compose -f deployment/local/postgresql/docker-compose.yaml up -d
 ## db-down: stop database
 db-down:
 	@ echo "Stopping database ..."
-	@docker stop yqapp-demo_db
+	@docker-compose -f deployment/local/postgresql/docker-compose.yaml down
 
 ## migrations/up: apply all up database migrations
 .PHONY: migrations/up
@@ -72,4 +72,8 @@ migrations/down:
 
 ## monitoring-up: start Monitoring stack
 monitoring-up:
-	@$HOSTNAME=$(hostname) docker stack deploy -c monitoring/docker-stack.yaml prom
+	@$HOSTNAME=$(hostname) docker stack deploy -c deployment/local/monitoring/docker-stack.yaml ${MONITORING_STACK}
+
+## monitoring-down: stop Monitoring Stack
+monitoring-down:
+	@docker stack rm ${MONITORING_STACK}

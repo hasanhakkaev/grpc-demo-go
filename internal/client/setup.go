@@ -1,9 +1,8 @@
-package server
+package client
 
 import (
 	"fmt"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
 	"github.com/hasanhakkaev/yqapp-demo/internal/interceptors"
@@ -15,19 +14,18 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
-	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 	"io"
 	"net"
 	"net/http"
 )
 
-func registerServices(srv *grpc.Server, svc Services) {
-	v1.RegisterTaskServiceServer(srv, svc.TaskService)
-	healthv1.RegisterHealthServer(srv, svc.Health)
-}
+//func registerServices(srv *grpc.Server, svc Services) {
+//	v1.RegisterTaskServiceServer(srv, svc.TaskService)
+//	healthv1.RegisterHealthServer(srv, svc.Health)
+//}
 
-// setupServices initializes the Server Services.
+// setupServices initializes the Client Services.
 func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider metric.MeterProvider) Services {
 	logger.Debug("Initializing services")
 	taskService := service.NewTaskService(logger, queries, meterProvider.Meter("task.service"))
@@ -40,7 +38,7 @@ func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider 
 
 // setupListener initializes a new tcp listener used by a gRPC server.
 func setupListener(cfg conf.Configuration, logger *zap.Logger) (net.Listener, error) {
-	protocol, address := cfg.Server.Address()
+	protocol, address := cfg.Listener()
 	logger.Debug("Initializing listener", zap.String("listener.protocol", protocol), zap.String("listener.address", address))
 	l, err := net.Listen(protocol, address)
 	if err != nil {
@@ -51,30 +49,30 @@ func setupListener(cfg conf.Configuration, logger *zap.Logger) (net.Listener, er
 }
 
 // Setup creates a new application using the given ServerConfig.
-func Setup(cfg conf.Configuration) (Server, error) {
+func Setup(cfg conf.Configuration) (Client, error) {
 
 	telemeter, err := telemetry.SetupTelemetry(cfg.Logger, cfg.Metrics)
 	if err != nil {
-		return Server{}, err
+		return Client{}, err
 	}
 
 	telemeter.Logger.Debug("Initializing server", zap.String("server.name", cfg.Server.Name), zap.String("server.environment", cfg.Server.Environment))
 
 	db, err := setupDB(cfg, telemeter.Logger)
 	if err != nil {
-		return Server{}, err
+		return Client{}, err
 	}
 
 	queries := database.New(db.DB)
 
 	err = database.MigrateModels(NewDSNFromConfig(cfg.Database))
 	if err != nil {
-		return Server{}, err
+		return Client{}, err
 	}
 
 	l, err := setupListener(cfg, telemeter.Logger)
 	if err != nil {
-		return Server{}, err
+		return Client{}, err
 	}
 
 	srv := grpc.NewServer(interceptors.NewServerInterceptors(telemeter)...)
@@ -88,14 +86,15 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		Handler: promhttp.Handler(),
 	}
 
-	return Server{
-		grpc:          srv,
-		listener:      l,
-		logger:        telemeter.Logger,
-		meterProvider: telemeter.MeterProvider,
-		db:            db,
-		services:      svc,
-		metricsServer: metricsServer,
+	return Client{
+		grpc:           srv,
+		listener:       l,
+		logger:         telemeter.Logger,
+		tracerProvider: telemeter.TracerProvider,
+		meterProvider:  telemeter.MeterProvider,
+		db:             db,
+		services:       svc,
+		metricsServer:  metricsServer,
 		shutdown: []shutDowner{
 			telemeter.TraceExporter,
 			telemeter.MeterExporter,
