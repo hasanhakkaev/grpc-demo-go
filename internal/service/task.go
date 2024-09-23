@@ -141,6 +141,7 @@ func (svc *tasks) ProcessTask(ctx context.Context, task *domain.Task) error {
 	// Update metrics
 	processingTasks.Dec()
 	doneTasks.Inc()
+
 	taskTypeCount.WithLabelValues(fmt.Sprintf("%d", task.Type)).Inc()
 	taskValueSum.WithLabelValues(fmt.Sprintf("%d", task.Type)).Add(float64(task.Value))
 

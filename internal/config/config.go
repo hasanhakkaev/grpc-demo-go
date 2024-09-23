@@ -94,5 +94,5 @@ func (s Server) Address() (network string, address string) {
 }
 
 func (s Server) URI() string {
-	return fmt.Sprintf("%s:%s", s.Host, s.Port)
+	return fmt.Sprintf("%s:%d", s.Host, s.Port)
 }

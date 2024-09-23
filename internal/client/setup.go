@@ -5,48 +5,15 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
-	"github.com/hasanhakkaev/yqapp-demo/internal/interceptors"
-	"github.com/hasanhakkaev/yqapp-demo/internal/service"
 	"github.com/hasanhakkaev/yqapp-demo/internal/telemetry"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/credentials/insecure"
 	"io"
-	"net"
 	"net/http"
 )
-
-//func registerServices(srv *grpc.Server, svc Services) {
-//	v1.RegisterTaskServiceServer(srv, svc.TaskService)
-//	healthv1.RegisterHealthServer(srv, svc.Health)
-//}
-
-// setupServices initializes the Client Services.
-func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider metric.MeterProvider) Services {
-	logger.Debug("Initializing services")
-	taskService := service.NewTaskService(logger, queries, meterProvider.Meter("task.service"))
-	healthService := health.NewServer()
-	return Services{
-		TaskService: taskService,
-		Health:      healthService,
-	}
-}
-
-// setupListener initializes a new tcp listener used by a gRPC server.
-func setupListener(cfg conf.Configuration, logger *zap.Logger) (net.Listener, error) {
-	protocol, address := cfg.Listener()
-	logger.Debug("Initializing listener", zap.String("listener.protocol", protocol), zap.String("listener.address", address))
-	l, err := net.Listen(protocol, address)
-	if err != nil {
-		logger.Error("Failed to initialize listener", zap.Error(err))
-		return nil, err
-	}
-	return l, nil
-}
 
 // Setup creates a new application using the given ServerConfig.
 func Setup(cfg conf.Configuration) (Client, error) {
@@ -56,7 +23,7 @@ func Setup(cfg conf.Configuration) (Client, error) {
 		return Client{}, err
 	}
 
-	telemeter.Logger.Debug("Initializing server", zap.String("server.name", cfg.Server.Name), zap.String("server.environment", cfg.Server.Environment))
+	telemeter.Logger.Debug("Initializing client", zap.String("client.name", cfg.Server.Name), zap.String("server.environment", cfg.Server.Environment))
 
 	db, err := setupDB(cfg, telemeter.Logger)
 	if err != nil {
@@ -65,21 +32,12 @@ func Setup(cfg conf.Configuration) (Client, error) {
 
 	queries := database.New(db.DB)
 
-	err = database.MigrateModels(NewDSNFromConfig(cfg.Database))
+	cc, err := grpc.NewClient(cfg.Server.URI(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return Client{}, err
+		panic(err)
 	}
 
-	l, err := setupListener(cfg, telemeter.Logger)
-	if err != nil {
-		return Client{}, err
-	}
-
-	srv := grpc.NewServer(interceptors.NewServerInterceptors(telemeter)...)
-	reflection.Register(srv)
-
-	svc := setupServices(queries, telemeter.Logger, telemeter.MeterProvider)
-	registerServices(srv, svc)
+	taskClient := NewTaskClient(cc)
 
 	metricsServer := &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Metrics.Port),
@@ -87,14 +45,11 @@ func Setup(cfg conf.Configuration) (Client, error) {
 	}
 
 	return Client{
-		grpc:           srv,
-		listener:       l,
-		logger:         telemeter.Logger,
-		tracerProvider: telemeter.TracerProvider,
-		meterProvider:  telemeter.MeterProvider,
-		db:             db,
-		services:       svc,
-		metricsServer:  metricsServer,
+		task:          *taskClient,
+		logger:        telemeter.Logger,
+		db:            db,
+		queries:       queries,
+		meterProvider: telemeter.MeterProvider,
 		shutdown: []shutDowner{
 			telemeter.TraceExporter,
 			telemeter.MeterExporter,
@@ -102,7 +57,8 @@ func Setup(cfg conf.Configuration) (Client, error) {
 		closer: []io.Closer{
 			metricsServer,
 		},
-		cfg: cfg,
+		cfg:           cfg,
+		metricsServer: metricsServer,
 	}, nil
 }
 
@@ -113,10 +69,6 @@ func setupDB(cfg conf.Configuration, logger *zap.Logger) (*database.Postgres, er
 	db, err := database.NewPostgres(NewDSNFromConfig(cfg.Database))
 	if err != nil {
 		logger.Error("Failed to initialize DB connection", zap.Error(err))
-		return nil, err
-	}
-	err = database.MigrateModels(NewDSNFromConfig(cfg.Database))
-	if err != nil {
 		return nil, err
 	}
 

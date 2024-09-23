@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hasanhakkaev/yqapp-demo/internal/client"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"log"
 )
@@ -10,12 +11,12 @@ func main() {
 	if err != nil {
 		log.Fatalln("reading config failed", err)
 	}
-	s, err := client.Setup(*cfg)
+	c, err := client.Setup(*cfg)
 	if err != nil {
-		log.Fatalln("setup consumer failed", err)
+		log.Fatalln("setup producer failed", err)
 	}
-	if err := client.Run(s); err != nil {
-		log.Fatalln("run consumer failed", err)
+	if err := client.Run(c); err != nil {
+		log.Fatalln("run producer failed", err)
 	}
-	log.Println("Closing consuper...")
+	log.Println("Closing producer...")
 }

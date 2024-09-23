@@ -27,7 +27,11 @@ producerService:
   maxBacklog: 99
 
 server:
-  name: yqapp-demo
+  name: yqapp-demo-server
   environment: production
   host: 0.0.0.0
   port: 3030
+
+client:
+  name: yqapp-demo-server
+  environment: production

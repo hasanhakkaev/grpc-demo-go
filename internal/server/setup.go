@@ -50,6 +50,28 @@ func setupListener(cfg conf.Configuration, logger *zap.Logger) (net.Listener, er
 	return l, nil
 }
 
+// setupDB initializes a new connection with a DB server.
+func setupDB(cfg conf.Configuration, logger *zap.Logger) (*database.Postgres, error) {
+	logger.Debug("Initializing DB connection", zap.String("db.engine", cfg.Database.Engine), zap.String("db.dsn", NewDSNFromConfig(cfg.Database)))
+
+	db, err := database.NewPostgres(NewDSNFromConfig(cfg.Database))
+	if err != nil {
+		logger.Error("Failed to initialize DB connection", zap.Error(err))
+		return nil, err
+	}
+	err = database.MigrateModels(NewDSNFromConfig(cfg.Database))
+	if err != nil {
+		return nil, err
+	}
+
+	return db, nil
+}
+
+func NewDSNFromConfig(db conf.Database) string {
+	return fmt.Sprintf("%s:%s@%s:%d/%s", db.Username, db.Password, db.Host, db.Port, db.Database)
+
+}
+
 // Setup creates a new application using the given ServerConfig.
 func Setup(cfg conf.Configuration) (Server, error) {
 
@@ -66,11 +88,6 @@ func Setup(cfg conf.Configuration) (Server, error) {
 	}
 
 	queries := database.New(db.DB)
-
-	err = database.MigrateModels(NewDSNFromConfig(cfg.Database))
-	if err != nil {
-		return Server{}, err
-	}
 
 	l, err := setupListener(cfg, telemeter.Logger)
 	if err != nil {
@@ -105,26 +122,4 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		},
 		cfg: cfg,
 	}, nil
-}
-
-// setupDB initializes a new connection with a DB server.
-func setupDB(cfg conf.Configuration, logger *zap.Logger) (*database.Postgres, error) {
-	logger.Debug("Initializing DB connection", zap.String("db.engine", cfg.Database.Engine), zap.String("db.dsn", NewDSNFromConfig(cfg.Database)))
-
-	db, err := database.NewPostgres(NewDSNFromConfig(cfg.Database))
-	if err != nil {
-		logger.Error("Failed to initialize DB connection", zap.Error(err))
-		return nil, err
-	}
-	err = database.MigrateModels(NewDSNFromConfig(cfg.Database))
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
-}
-
-func NewDSNFromConfig(db conf.Database) string {
-	return fmt.Sprintf("%s:%s@%s:%d/%s", db.Username, db.Password, db.Host, db.Port, db.Database)
-
 }

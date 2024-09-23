@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
+	v1 "github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -11,19 +11,20 @@ import (
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/codes"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
 
 // Services groups all the services exposed by a single gRPC Client.
-type Services struct {
-	TaskService v1.TaskServiceClient
-	Health      *health.Server
-}
+//type Services struct {
+//	//TaskService v1.TaskServiceClient
+//	Health *health.Server
+//}
 
 // shutDowner holds a method to gracefully shut down a service or integration.
 type shutDowner interface {
@@ -33,11 +34,10 @@ type shutDowner interface {
 
 // Client abstracts all the functional components to be run by the server.
 type Client struct {
-	client        grpc.ClientConn
-	listener      http.Handler
+	task          v1.TaskServiceClient
 	logger        *zap.Logger
 	db            *database.Postgres
-	services      Services
+	queries       *database.Queries
 	meterProvider metric.MeterProvider
 	shutdown      []shutDowner
 	closer        []io.Closer
@@ -46,30 +46,24 @@ type Client struct {
 }
 
 // Run serves the application services.
-func (s *Client) Run(ctx context.Context) error {
-	go s.checkHealth(ctx)
-	go s.serveMetrics()
+func (c *Client) Run(ctx context.Context) error {
+	go c.serveMetrics()
 
-	client, err := grpc.NewClient(s.cfg.Server.URI(), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		panic(err)
-	}
-
-	s.logger.Info("Running Client")
+	c.logger.Info("Running Client")
 
 	return nil
 }
 
 // Shutdown releases any held resources by dependencies of this Client.
-func (s *Client) Shutdown(ctx context.Context) error {
+func (c *Client) Shutdown(ctx context.Context) error {
 	var err error
-	for _, downer := range s.shutdown {
+	for _, downer := range c.shutdown {
 		if downer == nil {
 			continue
 		}
 		err = multierr.Append(err, downer.Shutdown(ctx))
 	}
-	for _, closer := range s.closer {
+	for _, closer := range c.closer {
 		if closer == nil {
 			continue
 		}
@@ -78,25 +72,14 @@ func (s *Client) Shutdown(ctx context.Context) error {
 
 	defer func(db *pgxpool.Pool, ctx context.Context) {
 		db.Close()
-	}(s.db.DB, context.Background())
+	}(c.db.DB, context.Background())
 
 	return err
 }
 
-func (s *Client) checkHealth(ctx context.Context) {
-	s.logger.Info("Running health service")
-	for {
-		if ctx.Err() != nil {
-			return
-		}
-		s.services.Health.SetServingStatus("app.db", s.checkDatabaseHealth())
-		time.Sleep(10 * time.Second)
-	}
-}
-
-func (s *Client) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus {
+func (c *Client) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus {
 	state := healthv1.HealthCheckResponse_SERVING
-	err := s.db.DB.Ping(context.Background())
+	err := c.db.DB.Ping(context.Background())
 	if err != nil {
 		state = healthv1.HealthCheckResponse_NOT_SERVING
 	}
@@ -104,8 +87,40 @@ func (s *Client) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatu
 	return state
 }
 
-func (s *Client) serveMetrics() {
-	if err := s.metricsServer.ListenAndServe(); err != nil {
-		s.logger.Error("failed to listen and server to metrics server", zap.Error(err))
+func (c *Client) serveMetrics() {
+	if err := c.metricsServer.ListenAndServe(); err != nil {
+		c.logger.Error("failed to listen and server to metrics server", zap.Error(err))
 	}
+}
+
+// NewTaskClient returns a new task client
+func NewTaskClient(cc *grpc.ClientConn) *v1.TaskServiceClient {
+	client := v1.NewTaskServiceClient(cc)
+	return &client
+}
+
+func (c *Client) CreateTask(task *v1.Task) {
+	req := &v1.CreateTaskRequest{
+		Task: task,
+	}
+
+	c.logger.Info("Creating task")
+
+	// set timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	res, err := c.task.CreateTask(ctx, req)
+	if err != nil {
+		st, ok := status.FromError(err)
+		if ok && st.Code() == codes.AlreadyExists {
+			// not a big deal
+			log.Print("laptop already exists")
+		} else {
+			log.Fatal("cannot create laptop: ", err)
+		}
+		return
+	}
+
+	log.Printf("created laptop with id: %s", res.Value)
 }

@@ -5,7 +5,7 @@ import (
 )
 
 // Run runs the given server.
-func Run(s *Client) error {
+func Run(s Client) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s.logger.Debug("Running consumer...")

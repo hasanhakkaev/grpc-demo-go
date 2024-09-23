@@ -39,11 +39,7 @@ func (suite *ServerTestSuite) TestSetup() {
 	app, err := Setup(*cfg)
 	suite.Assert().NoError(err)
 	suite.Assert().NotZero(app)
-	suite.Assert().NotNil(app.listener)
 	suite.Assert().NotNil(app.logger)
-	suite.Assert().NotNil(app.grpc)
 	suite.Assert().NotNil(app.db)
-	suite.Assert().NotNil(app.services.Health)
-	suite.Assert().NotNil(app.services.TaskService)
 
 }

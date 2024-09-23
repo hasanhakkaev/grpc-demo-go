@@ -26,12 +26,6 @@ func NewPostgres(dsn string) (*Postgres, error) {
 		os.Exit(1)
 	}
 
-	// Set the search path for the current session
-	//_, err = db.Exec(ctx, "SET search_path TO yqapp_demo_schema")
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
-
 	return &Postgres{
 		DB: db,
 	}, nil
