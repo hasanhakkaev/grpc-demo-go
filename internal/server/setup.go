@@ -31,9 +31,9 @@ func registerServices(srv *grpc.Server, svc Services) {
 }
 
 // setupServices initializes the Server Services.
-func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider metric.MeterProvider, taskChannel chan *domain.Task) Services {
+func setupServices(queries *database.Queries, logger *zap.Logger, meterProvider metric.MeterProvider, taskChannel chan *domain.Task, taskLimiter *rate.Limiter) Services {
 	logger.Debug("Initializing services")
-	taskService := service.NewTaskService(logger, queries, meterProvider.Meter("task.service"), taskChannel)
+	taskService := service.NewTaskService(logger, queries, meterProvider.Meter("task.service"), taskChannel, taskLimiter)
 	healthService := health.NewServer()
 	return Services{
 		TaskService: taskService,
@@ -102,10 +102,12 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		return Server{}, err
 	}
 
+	taskLimiter := rate.NewLimiter(rate.Limit(cfg.ConsumerService.MessageConsumptionRate), 1)
+
 	srv := grpc.NewServer(interceptors.NewServerInterceptors(telemeter)...)
 	reflection.Register(srv)
 
-	svc := setupServices(queries, telemeter.Logger, telemeter.MeterProvider, taskChannel)
+	svc := setupServices(queries, telemeter.Logger, telemeter.MeterProvider, taskChannel, taskLimiter)
 	registerServices(srv, svc)
 
 	go svc.TaskService.ConsumeTasks(taskChannel, limiter)
@@ -129,7 +131,6 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		services:      svc,
 		metricsServer: metricsServer,
 		shutdown: []shutDowner{
-			telemeter.TraceExporter,
 			telemeter.MeterExporter,
 		},
 		closer: []io.Closer{

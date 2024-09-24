@@ -23,8 +23,8 @@ consumerService:
   profilingPort: 6060
 
 producerService:
-  messageProductionRate: 10
-  maxBacklog: 100000
+  messageProductionRate: 2
+  maxBacklog: 100
   logLevel: info
   logEncoding: console
   metricsPort: 4041

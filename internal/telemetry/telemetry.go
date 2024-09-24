@@ -5,7 +5,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	metricsdk "go.opentelemetry.io/otel/sdk/metric"
-	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -13,7 +12,6 @@ import (
 type Telemetry struct {
 	Logger         *zap.Logger
 	TracerProvider trace.TracerProvider
-	TraceExporter  tracesdk.SpanExporter
 	MeterProvider  metric.MeterProvider
 	MeterExporter  metricsdk.Exporter
 	Propagator     propagation.TextMapPropagator

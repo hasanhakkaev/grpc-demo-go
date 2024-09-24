@@ -56,8 +56,9 @@ func Setup(cfg conf.Configuration) (Client, error) {
 		logger:        telemeter.Logger,
 		meterProvider: telemeter.MeterProvider,
 		shutdown: []shutDowner{
-			telemeter.TraceExporter,
 			telemeter.MeterExporter,
+			pprofServer,
+			metricsServer,
 		},
 		closer: []io.Closer{
 			metricsServer,

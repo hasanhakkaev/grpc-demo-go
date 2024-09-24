@@ -8,6 +8,7 @@ import (
 	"github.com/hasanhakkaev/yqapp-demo/internal/domain"
 	_ "github.com/lib/pq"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -26,10 +27,16 @@ type shutDowner interface {
 	Shutdown(ctx context.Context) error
 }
 
-var serviceStatus = prometheus.NewGauge(prometheus.GaugeOpts{
-	Name: "service_up",                                // Metric name
-	Help: "Whether the service is up (1) or down (0)", // Metric description
-})
+var (
+	serviceStatus = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "service_up",                                // Metric name
+		Help: "Whether the service is up (1) or down (0)", // Metric description
+	})
+	producerTasks = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "tasks_produced_total",
+		Help: "The total number of produced tasks",
+	})
+)
 
 // Client abstracts all the functional components to be run by the server.
 type Client struct {
@@ -259,6 +266,9 @@ func (c *Client) sendTask(ctx context.Context, task *domain.Task) error {
 
 	// Call the gRPC CreateTask method
 	_, err := c.task.CreateTask(ctx, req)
+
+	producerTasks.Inc()
+
 	return err
 }
 

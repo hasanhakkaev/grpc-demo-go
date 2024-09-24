@@ -15,7 +15,6 @@ func NewServerInterceptors(telemeter telemetry.Telemetry) []grpc.ServerOption {
 		newServerStreamInterceptors(telemeter),
 		grpc.StatsHandler(
 			otelgrpc.NewServerHandler(
-				otelgrpc.WithTracerProvider(telemeter.TracerProvider),
 				otelgrpc.WithMeterProvider(telemeter.MeterProvider),
 				otelgrpc.WithPropagators(telemeter.Propagator),
 			),

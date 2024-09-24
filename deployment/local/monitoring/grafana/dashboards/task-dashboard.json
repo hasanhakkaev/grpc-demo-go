@@ -6,6 +6,10 @@
       "title": "Messages in Each State",
       "targets": [
         {
+          "expr": "sum(tasks_produced_total)",
+          "legendFormat": "Produced"
+        },
+        {
           "expr": "sum(tasks_received_total)",
           "legendFormat": "Received"
         },
@@ -61,7 +65,7 @@
       "title": "Total Processed Tasks per Task Type",
       "targets": [
         {
-          "expr": "sum by(type) (taskTypeCount)",
+          "expr": "sum by (type) (tasks_per_type_total)",
           "legendFormat": "{{type}}"
         }
       ]

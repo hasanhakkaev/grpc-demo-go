@@ -11,7 +11,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/metric"
-	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/time/rate"
 	"time"
 
@@ -54,6 +53,14 @@ var (
 		},
 		[]string{"type"},
 	)
+
+	totalTasksByType = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "total_tasks_by_type",
+			Help: "The total number of tasks processed by type",
+		},
+		[]string{"type"},
+	)
 )
 
 type TaskService struct {
@@ -62,15 +69,17 @@ type TaskService struct {
 	queries     *database.Queries
 	meter       metric.Meter
 	taskChannel chan *domain.Task
+	taskLimiter *rate.Limiter
 }
 
 // NewTaskService initializes a new v1.TaskProducerServiceServer implementation.
-func NewTaskService(logger *zap.Logger, queries *database.Queries, meter metric.Meter, taskChannel chan *domain.Task) *TaskService {
+func NewTaskService(logger *zap.Logger, queries *database.Queries, meter metric.Meter, taskChannel chan *domain.Task, taskLimiter *rate.Limiter) *TaskService {
 	return &TaskService{
 		logger:      logger,
 		queries:     queries,
 		meter:       meter,
 		taskChannel: taskChannel,
+		taskLimiter: taskLimiter,
 	}
 }
 
@@ -78,10 +87,7 @@ func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRe
 	taskChannel := make(chan *domain.Task, 100) // Buffered channel
 
 	svc.logger.Log(svc.logger.Level(), "Received task creation request")
-	span := trace.SpanFromContext(ctx)
-	defer span.End()
 
-	span.AddEvent("Parsing task from API request")
 	svc.logger.Log(svc.logger.Level(), "Parsing task from API request")
 
 	domainTask := domain.FromProtoToDomain(request.GetTask())
@@ -93,13 +99,11 @@ func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRe
 
 	taskParams := domainTask.ToTaskCreateParams()
 
-	span.AddEvent("Persisting task in the database")
 	svc.logger.Log(svc.logger.Level(), "Persisting task in the database")
 
 	dbTaskID, err := svc.queries.CreateTask(ctx, *taskParams)
 	if err != nil {
 		svc.logger.Log(svc.logger.Level(), "Failed to persist task in the database", zap.Error(err))
-		span.RecordError(err)
 		return nil, status.Error(codes.Unavailable, "failed to create task")
 	}
 
@@ -110,15 +114,9 @@ func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRe
 
 	receivedTasks.Inc()
 
-	limiter := rate.NewLimiter(1, 1)
+	go svc.ConsumeTasks(taskChannel, svc.taskLimiter)
 
-	go svc.ConsumeTasks(taskChannel, limiter)
-
-	span.AddEvent("Task in the database persisted!")
 	svc.logger.Log(svc.logger.Level(), "Task in the database persisted!")
-
-	processingTasks.Inc()
-	receivedTasks.Dec()
 
 	svc.logger.Log(svc.logger.Level(), "Returning created task", zap.Int("task.id", int(dbTaskID)))
 
@@ -169,8 +167,13 @@ func (svc *TaskService) ProcessTask(ctx context.Context, task *domain.Task) erro
 	}
 
 	// Update metrics
+	receivedTasks.Dec()
 	processingTasks.Dec()
+
 	doneTasks.Inc()
+
+	taskTypeLabel := fmt.Sprintf("%d", task.Type)
+	totalTasksByType.WithLabelValues(taskTypeLabel).Inc()
 
 	taskTypeCount.WithLabelValues(fmt.Sprintf("%d", task.Type)).Inc()
 	taskValueSum.WithLabelValues(fmt.Sprintf("%d", task.Type)).Add(float64(task.Value))
