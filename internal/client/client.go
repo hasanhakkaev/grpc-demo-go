@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	v1 "github.com/hasanhakkaev/yqapp-demo/api/tasks/v1"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/domain"
@@ -13,7 +14,6 @@ import (
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -46,42 +46,67 @@ type Client struct {
 }
 
 // Run serves the application services.
-func (c *Client) Run() error {
+func (c *Client) Run(ctx context.Context) error {
 
 	// Mark the service as up when starting
 	markServiceUp()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	c.logger.Log(c.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", c.cfg.GetConsumerMetricsPort()))
-	go c.serveMetrics()
+	go c.serveMetrics(ctx)
 
 	c.logger.Log(c.logger.Level(), "Starting Pprof endpoint /metrics", zap.String("port", c.cfg.GetConsumerProfilingPort()))
-	go c.servePprof()
+	go c.servePprof(ctx)
 
 	c.logger.Log(c.logger.Level(), "Running Client")
 
-	// Create a cancellable context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-
 	go c.StartSending(ctx)
+
 	// Start producing tasks at the specified rate
+	productionDone := make(chan error, 1)
+	go func() {
+		productionDone <- c.ProduceTasks(ctx, int(c.cfg.ProducerService.MaxBacklog))
+	}()
 
 	// Setup signal capturing for graceful shutdown
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	err := c.ProduceTasks(context.Background(), int(c.cfg.ProducerService.MaxBacklog))
-	if err != nil {
-		log.Fatalf("Error producing tasks: %v", err)
+	//err := c.ProduceTasks(context.Background(), int(c.cfg.ProducerService.MaxBacklog))
+	//if err != nil {
+	//	log.Fatalf("Error producing tasks: %v", err)
+	//}
+	//
+	//<-sigs
+	//c.logger.Log(c.logger.Level(), "Received shutdown signal")
+	//
+	//cancel()
+	select {
+	case sig := <-sigs:
+		// Received shutdown signal (SIGINT or SIGTERM)
+		c.logger.Log(c.logger.Level(), "Received shutdown signal", zap.String("signal", sig.String()))
+
+		// Cancel the context to signal shutdown to goroutines
+		cancel()
+
+		// Wait for task production to finish
+		err := <-productionDone
+		if err != nil {
+			c.logger.Error("Error during task production", zap.Error(err))
+		}
+
+	case err := <-productionDone:
+		// Task production finished (all tasks produced)
+		if err != nil {
+			c.logger.Error("Error during task production", zap.Error(err))
+		}
 	}
-
-	<-sigs
-	c.logger.Log(c.logger.Level(), "Received shutdown signal")
-
-	cancel()
 
 	markServiceDown()
 
-	err = c.Shutdown(context.Background())
+	err := c.Shutdown(context.Background())
 	if err != nil {
 		return err
 	}
@@ -108,16 +133,48 @@ func (c *Client) Shutdown(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) serveMetrics() {
-	if err := c.metricsServer.ListenAndServe(); err != nil {
-		c.logger.Error("failed to listen and server to metrics server", zap.Error(err))
+func (c *Client) serveMetrics(ctx context.Context) {
+	//if err := c.metricsServer.ListenAndServe(); err != nil {
+	//	c.logger.Error("failed to listen and server to metrics server", zap.Error(err))
+	//}
+
+	// Start the server in a separate goroutine
+	go func() {
+		c.logger.Log(c.logger.Level(), "Metrics server started", zap.String("port", c.cfg.GetProducerMetricsPort()))
+		if err := c.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			c.logger.Error("failed to listen and serve metrics server", zap.Error(err))
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+
+	// Gracefully shut down the metrics server
+	c.logger.Log(c.logger.Level(), "Shutting down metrics server...")
+	if err := c.metricsServer.Shutdown(context.Background()); err != nil {
+		c.logger.Error("Error during metrics server shutdown", zap.Error(err))
 	}
 }
 
-func (c *Client) servePprof() {
+func (c *Client) servePprof(ctx context.Context) {
 	// Start the HTTP server for pprof on a specific port (e.g., 6060)
-	if err := c.pprofServer.ListenAndServe(); err != nil {
-		log.Println("pprof server failed:", err)
+	//if err := c.pprofServer.ListenAndServe(); err != nil {
+	//	log.Println("pprof server failed:", err)
+	//}
+	go func() {
+		c.logger.Log(c.logger.Level(), "Pprof server started", zap.String("port", c.cfg.GetProducerProfilingPort()))
+		if err := c.pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			c.logger.Error("failed to listen and serve pprof server", zap.Error(err))
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+
+	// Gracefully shut down the metrics server
+	c.logger.Log(c.logger.Level(), "Shutting down pprof server...")
+	if err := c.pprofServer.Shutdown(context.Background()); err != nil {
+		c.logger.Error("Error during metrics pprof shutdown", zap.Error(err))
 	}
 }
 
@@ -132,6 +189,11 @@ func (c *Client) ProduceTasks(ctx context.Context, totalMessages int) error {
 	for i := 0; i < totalMessages; i++ {
 		// Wait until the rate limiter allows the next message to be produced
 		if err := c.rateLimiter.Wait(ctx); err != nil {
+			if errors.Is(err, context.Canceled) {
+				c.logger.Warn("Task production stopped due to context cancellation")
+				return nil // Gracefully stop without logging an error
+			}
+
 			c.logger.Error("Rate limiter error", zap.Error(err))
 			return err
 		}
@@ -165,7 +227,21 @@ func (c *Client) StartSending(ctx context.Context) {
 				c.logger.Log(c.logger.Level(), "Task sent successfully")
 			}
 		case <-ctx.Done():
-			c.logger.Warn("Context cancelled, stopping task sending")
+			// Context canceled, initiate graceful shutdown
+			c.logger.Warn("Context cancelled, stopping task sending. Draining remaining tasks...")
+
+			// Drain the task queue to process remaining tasks
+			for len(c.taskQueue) > 0 {
+				task := <-c.taskQueue
+				err := c.sendTask(ctx, task)
+				if err != nil {
+					c.logger.Error("Failed to send task during draining", zap.Error(err))
+				} else {
+					c.logger.Log(c.logger.Level(), "Task sent successfully during draining")
+				}
+			}
+
+			c.logger.Warn("All remaining tasks processed, task sending stopped")
 			return
 		}
 	}

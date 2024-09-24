@@ -2,20 +2,25 @@ package server
 
 import (
 	"context"
+	"errors"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
 	"github.com/hasanhakkaev/yqapp-demo/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/health"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"io"
-	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -24,6 +29,11 @@ type Services struct {
 	TaskService *service.TaskService
 	Health      *health.Server
 }
+
+var serviceStatus = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "service_up",                                // Metric name
+	Help: "Whether the service is up (1) or down (0)", // Metric description
+})
 
 // shutDowner holds a method to gracefully shut down a service or integration.
 type shutDowner interface {
@@ -53,22 +63,49 @@ type Server struct {
 }
 
 // Run serves the application services.
-func (s Server) Run(ctx context.Context) error {
+func (s *Server) Run(ctx context.Context) error {
 	go s.checkHealth(ctx)
 
+	// Mark the service as up when starting
+	markServiceUp()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	s.logger.Log(s.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", s.cfg.GetProducerMetricsPort()))
-	go s.serveMetrics()
+	go s.serveMetrics(ctx)
 
 	s.logger.Log(s.logger.Level(), "Starting Pprof endpoint /debug/pprof", zap.String("port", s.cfg.GetProducerProfilingPort()))
+	go s.servePprof(ctx)
 
-	go s.servePprof()
+	s.logger.Log(s.logger.Level(), "Starting Consumer Service /debug/pprof", zap.Uint16("port", s.cfg.Server.Port))
+	go s.startService(ctx)
 
-	s.logger.Info("Running Server")
-	return s.grpc.Serve(s.listener)
+	// Setup signal capturing for graceful shutdown
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	select {
+	case sig := <-sigs:
+		// Received shutdown signal (SIGINT or SIGTERM)
+		s.logger.Log(s.logger.Level(), "Received shutdown signal", zap.String("signal", sig.String()))
+
+		// Cancel the context to signal shutdown to goroutines
+		cancel()
+	}
+
+	markServiceDown()
+
+	err := s.Shutdown(context.Background())
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Shutdown releases any held resources by dependencies of this Server.
-func (s Server) Shutdown(ctx context.Context) error {
+func (s *Server) Shutdown(ctx context.Context) error {
 	var err error
 	for _, downer := range s.shutdown {
 		if downer == nil {
@@ -90,8 +127,8 @@ func (s Server) Shutdown(ctx context.Context) error {
 	return err
 }
 
-func (s Server) checkHealth(ctx context.Context) {
-	s.logger.Info("Running health service")
+func (s *Server) checkHealth(ctx context.Context) {
+	s.logger.Log(s.logger.Level(), "Running health service")
 	for {
 		if ctx.Err() != nil {
 			return
@@ -101,7 +138,7 @@ func (s Server) checkHealth(ctx context.Context) {
 	}
 }
 
-func (s Server) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus {
+func (s *Server) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus {
 	state := healthv1.HealthCheckResponse_SERVING
 	err := s.db.DB.Ping(context.Background())
 	if err != nil {
@@ -111,15 +148,62 @@ func (s Server) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus
 	return state
 }
 
-func (s Server) serveMetrics() {
-	if err := s.metricsServer.ListenAndServe(); err != nil {
-		s.logger.Error("failed to listen and server to metrics server", zap.Error(err))
+func (s *Server) serveMetrics(ctx context.Context) {
+	go func() {
+		s.logger.Log(s.logger.Level(), "Metrics server started", zap.String("port", s.cfg.GetConsumerMetricsPort()))
+		if err := s.metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("failed to listen and serve metrics server", zap.Error(err))
+		}
+	}()
+
+	// Wait for shutdown signals
+	<-ctx.Done()
+
+	// Gracefully shut down the metrics server
+	s.logger.Log(s.logger.Level(), "Shutting down metrics server...")
+	if err := s.metricsServer.Shutdown(context.Background()); err != nil {
+		s.logger.Error("Error during metrics server shutdown", zap.Error(err))
 	}
 }
 
-func (s *Server) servePprof() {
-	// Start the HTTP server for pprof on a specific port (e.g., 6060)
-	if err := s.pprofServer.ListenAndServe(); err != nil {
-		log.Println("pprof server failed:", err)
+func (s *Server) startService(ctx context.Context) {
+	go func() {
+		s.logger.Log(s.logger.Level(), "Running consumer service ", zap.String("port", strconv.Itoa(int(s.cfg.Server.Port))))
+		if err := s.grpc.Serve(s.listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("failed to listen and serve consumer grpc server", zap.Error(err))
+		}
+	}()
+	<-ctx.Done()
+
+	// Gracefully shut down the metrics server
+	s.logger.Log(s.logger.Level(), "Shutting down consumer service...")
+	if err := s.metricsServer.Shutdown(context.Background()); err != nil {
+		s.logger.Error("Error during consumer service shutdown", zap.Error(err))
 	}
+}
+
+func (s *Server) servePprof(ctx context.Context) {
+	go func() {
+		s.logger.Log(s.logger.Level(), "Pprof server started", zap.String("port", s.cfg.GetConsumerProfilingPort()))
+		if err := s.pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("failed to listen and serve pprof server", zap.Error(err))
+		}
+	}()
+
+	// Wait for shutdown signal
+	<-ctx.Done()
+
+	// Gracefully shut down the metrics server
+	s.logger.Log(s.logger.Level(), "Shutting down pprof server...")
+	if err := s.pprofServer.Shutdown(context.Background()); err != nil {
+		s.logger.Error("Error during metrics pprof shutdown", zap.Error(err))
+	}
+}
+
+func markServiceUp() {
+	serviceStatus.Set(1) // Set to 1 when the service is up
+}
+
+func markServiceDown() {
+	serviceStatus.Set(0) // Set to 0 when the service is down
 }

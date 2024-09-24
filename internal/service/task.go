@@ -128,7 +128,7 @@ func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRe
 
 // ProcessTask processes a single task, updating its state and tracking metrics.
 func (svc *TaskService) ProcessTask(ctx context.Context, task *domain.Task) error {
-	svc.logger.Info("Handling task", zap.Int("task.id", int(task.ID)))
+	svc.logger.Log(svc.logger.Level(), "Handling task", zap.Int("task.id", int(task.ID)))
 
 	// Update task state to "processing"
 	_, err := svc.queries.UpdateTaskState(ctx, database.UpdateTaskStateParams{
@@ -177,7 +177,7 @@ func (svc *TaskService) ProcessTask(ctx context.Context, task *domain.Task) erro
 
 	taskTypeSums[int(task.Type)] += task.Value
 
-	svc.logger.Info("Task processed", zap.Int("id", int(task.ID)),
+	svc.logger.Log(svc.logger.Level(), "Task processed", zap.Int("id", int(task.ID)),
 		zap.Int("type", int(task.Type)), zap.Int("value", int(task.Value)))
 
 	svc.logger.Log(svc.logger.Level(), "Task's content: ", zap.Any("task", task))

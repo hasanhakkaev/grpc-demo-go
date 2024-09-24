@@ -24,11 +24,11 @@
       "title": "Service Status (Up/Down)",
       "targets": [
         {
-          "expr": "up{job=\"producer\"}",
+          "expr": "up{job=\"yqapp_demo-producer\"}",
           "legendFormat": "Producer"
         },
         {
-          "expr": "up{job=\"consumer\"}",
+          "expr": "up{job=\"yqapp_demo-consumer\"}",
           "legendFormat": "Consumer"
         }
       ],

@@ -17,14 +17,14 @@ database:
 
 consumerService:
   messageConsumptionRate: 1
-  logLevel: debug
+  logLevel: info
   logEncoding: json
   metricsPort: 4040
   profilingPort: 6060
 
 producerService:
   messageProductionRate: 10
-  maxBacklog: 10000
+  maxBacklog: 100000
   logLevel: info
   logEncoding: console
   metricsPort: 4041
