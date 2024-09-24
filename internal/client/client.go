@@ -6,6 +6,7 @@ import (
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/domain"
 	_ "github.com/lib/pq"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
@@ -14,6 +15,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 // shutDowner holds a method to gracefully shut down a service or integration.
@@ -21,6 +25,11 @@ type shutDowner interface {
 	// Shutdown releases any held computational resources.
 	Shutdown(ctx context.Context) error
 }
+
+var serviceStatus = prometheus.NewGauge(prometheus.GaugeOpts{
+	Name: "service_up",                                // Metric name
+	Help: "Whether the service is up (1) or down (0)", // Metric description
+})
 
 // Client abstracts all the functional components to be run by the server.
 type Client struct {
@@ -33,36 +42,44 @@ type Client struct {
 	metricsServer *http.Server
 	taskQueue     chan *domain.Task // This is the backlog (buffered channel)
 	rateLimiter   *rate.Limiter
+	pprofServer   *http.Server
 }
 
 // Run serves the application services.
-func (c *Client) Run(ctx context.Context) error {
+func (c *Client) Run() error {
+
+	// Mark the service as up when starting
+	markServiceUp()
+
+	c.logger.Log(c.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", c.cfg.GetConsumerMetricsPort()))
 	go c.serveMetrics()
 
-	c.logger.Info("Running Client")
+	c.logger.Log(c.logger.Level(), "Starting Pprof endpoint /metrics", zap.String("port", c.cfg.GetConsumerProfilingPort()))
+	go c.servePprof()
 
-	//ticker := time.NewTicker(time.Second / time.Duration(c.cfg.ProducerService.MessageProductionRate))
-	//defer ticker.Stop() // Stop the ticker when we're done
-	//
-	//for i := 0; i < 1000; i++ {
-	//	task := domain.RandomTask()
-	//	err := c.CreateTask(*task)
-	//	time.Sleep(0 * time.Second)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	c.logger.Info("Task:", zap.Int("task", i))
-	//	// Wait for the ticker before producing the next task
-	//	<-ticker
-	//
-	//}
-	go c.StartSending(context.Background())
+	c.logger.Log(c.logger.Level(), "Running Client")
+
+	// Create a cancellable context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+
+	go c.StartSending(ctx)
 	// Start producing tasks at the specified rate
-	totalMessages := 1000 // Number of messages to produce
-	err := c.ProduceTasks(context.Background(), totalMessages)
+
+	// Setup signal capturing for graceful shutdown
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
+	err := c.ProduceTasks(context.Background(), int(c.cfg.ProducerService.MaxBacklog))
 	if err != nil {
 		log.Fatalf("Error producing tasks: %v", err)
 	}
+
+	<-sigs
+	c.logger.Log(c.logger.Level(), "Received shutdown signal")
+
+	cancel()
+
+	markServiceDown()
 
 	err = c.Shutdown(context.Background())
 	if err != nil {
@@ -97,42 +114,18 @@ func (c *Client) serveMetrics() {
 	}
 }
 
+func (c *Client) servePprof() {
+	// Start the HTTP server for pprof on a specific port (e.g., 6060)
+	if err := c.pprofServer.ListenAndServe(); err != nil {
+		log.Println("pprof server failed:", err)
+	}
+}
+
 // NewTaskClient returns a new task client
 func NewTaskClient(cc *grpc.ClientConn) *v1.TaskServiceClient {
 	client := v1.NewTaskServiceClient(cc)
 	return &client
 }
-
-//func (c *Client) CreateTask(dTask domain.Task) error {
-//
-//	c.logger.Info("Requesting task")
-//
-//	// set timeout
-//	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-//	defer cancel()
-//
-//	protoTask := domain.FromDomainToProto(&dTask)
-//
-//	req := &v1.CreateTaskRequest{
-//		Task: protoTask,
-//	}
-//
-//	resp, err := c.task.CreateTask(ctx, req)
-//	if err != nil {
-//		st, ok := status.FromError(err)
-//		if ok && st.Code() == codes.AlreadyExists {
-//			log.Print("Task already exists")
-//		} else {
-//			log.Fatal("cannot create Task: ", err)
-//		}
-//		return nil
-//	}
-//
-//	c.logger.Log(c.logger.Level(), "Returning created task", zap.String("task.id", strconv.Itoa(int(resp.Id))))
-//
-//	return nil
-//
-//}
 
 // ProduceTasks produces tasks at a controlled rate and enqueues them into the taskQueue.
 func (c *Client) ProduceTasks(ctx context.Context, totalMessages int) error {
@@ -149,7 +142,7 @@ func (c *Client) ProduceTasks(ctx context.Context, totalMessages int) error {
 		// Attempt to enqueue the task into the backlog (taskQueue)
 		select {
 		case c.taskQueue <- task:
-			c.logger.Info("Task produced and enqueued", zap.Int("task number", i+1))
+			c.logger.Log(c.logger.Level(), "Task produced and enqueued", zap.Int("task number", i+1))
 		case <-ctx.Done():
 			c.logger.Warn("Context cancelled, stopping task production")
 			return ctx.Err()
@@ -169,7 +162,7 @@ func (c *Client) StartSending(ctx context.Context) {
 			if err != nil {
 				c.logger.Error("Failed to send task", zap.Error(err))
 			} else {
-				c.logger.Info("Task sent successfully", zap.Uint32("task_id", task.ID))
+				c.logger.Log(c.logger.Level(), "Task sent successfully")
 			}
 		case <-ctx.Done():
 			c.logger.Warn("Context cancelled, stopping task sending")
@@ -191,4 +184,12 @@ func (c *Client) sendTask(ctx context.Context, task *domain.Task) error {
 	// Call the gRPC CreateTask method
 	_, err := c.task.CreateTask(ctx, req)
 	return err
+}
+
+func markServiceUp() {
+	serviceStatus.Set(1) // Set to 1 when the service is up
+}
+
+func markServiceDown() {
+	serviceStatus.Set(0) // Set to 0 when the service is down
 }

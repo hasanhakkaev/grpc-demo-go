@@ -36,7 +36,7 @@ func interceptorLogger(l *zap.Logger) logging.Logger {
 		case logging.LevelDebug:
 			logger.Debug(msg)
 		case logging.LevelInfo:
-			logger.Info(msg)
+			logger.Log(l.Level(), msg)
 		case logging.LevelWarn:
 			logger.Warn(msg)
 		case logging.LevelError:

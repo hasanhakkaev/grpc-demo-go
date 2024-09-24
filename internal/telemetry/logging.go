@@ -4,7 +4,6 @@ import (
 	"github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"os"
 )
 
 // SetupLogger initializes a new Zap Logger with the parameters specified by the given ServerConfig.
@@ -59,9 +58,6 @@ func SetupLogger(cfg conf.Configuration, targetService string) (*zap.Logger, err
 		},
 		ErrorOutputPaths: []string{
 			"stderr",
-		},
-		InitialFields: map[string]interface{}{
-			"pid": os.Getpid(),
 		},
 	}
 

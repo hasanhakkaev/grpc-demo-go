@@ -22,6 +22,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	_ "net/http/pprof" // Import pprof
 )
 
 func registerServices(srv *grpc.Server, svc Services) {
@@ -114,6 +115,11 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		Handler: promhttp.Handler(),
 	}
 
+	pprofServer := &http.Server{
+		Addr:    fmt.Sprintf(":%s", cfg.GetConsumerProfilingPort()),
+		Handler: http.DefaultServeMux,
+	}
+
 	return Server{
 		grpc:          srv,
 		listener:      l,
@@ -129,6 +135,7 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		closer: []io.Closer{
 			metricsServer,
 		},
-		cfg: cfg,
+		cfg:         cfg,
+		pprofServer: pprofServer,
 	}, nil
 }

@@ -59,7 +59,8 @@ type Consumer struct {
 	MessageConsumptionRate uint   `env:"MESSAGE_CONSUMPTION_RATE" envDefault:"1000" yaml:"messageConsumptionRate"`
 	LogLevel               string `env:"LOG_LEVEL" envDefault:"info" yaml:"logLevel"`
 	LogEncoding            string `env:"LOG_ENCODING" yaml:"logEncoding"`
-	MetricsPort            uint16 `ENV:"METRICS_PORT" envDefault:"5000" yaml:"metricsPort"`
+	MetricsPort            uint16 `env:"METRICS_PORT" envDefault:"5000" yaml:"metricsPort"`
+	ProfilingPort          uint16 `env:"PROFILING_PORT" envDefault:"8080" yaml:"profilingPort"`
 }
 
 type Producer struct {
@@ -67,7 +68,8 @@ type Producer struct {
 	MaxBacklog            uint   `env:"MAX_BACKLOG" envDefault:"10" yaml:"maxBacklog"`
 	LogLevel              string `env:"LOG_LEVEL" envDefault:"info" yaml:"logLevel"`
 	LogEncoding           string `env:"LOG_ENCODING" yaml:"logEncoding"`
-	MetricsPort           uint16 `ENV:"METRICS_PORT" envDefault:"5000" yaml:"metricsPort"`
+	MetricsPort           uint16 `env:"METRICS_PORT" envDefault:"5000" yaml:"metricsPort"`
+	ProfilingPort         uint16 `env:"PROFILING_PORT" envDefault:"8080" yaml:"profilingPort"`
 }
 
 type Server struct {
@@ -82,7 +84,7 @@ type Client struct {
 	Environment string `env:"ENVIRONMENT" envDefault:"development" yaml:"environment"`
 }
 type Configuration struct {
-	Server          Server   `yaml:"server" yaml:"server"`
+	Server          Server   `env:"SERVER" yaml:"server"`
 	ConsumerService Consumer `env:"CONSUMER" yaml:"consumer"`
 	ProducerService Producer `env:"PRODUCER" yaml:"producer"`
 	Database        Database `envPrefix:"DATABASE_" yaml:"database"`
@@ -95,6 +97,10 @@ func (c Configuration) GetProducerMetricsPort() string {
 	return fmt.Sprintf("%d", c.ProducerService.MetricsPort)
 }
 
+func (c Configuration) GetProducerProfilingPort() string {
+	return fmt.Sprintf("%d", c.ProducerService.ProfilingPort)
+}
+
 func (c Configuration) GetProducerLogLevel() string {
 	return c.ProducerService.LogLevel
 }
@@ -105,6 +111,10 @@ func (c Configuration) GetProducerLogEncoding() string {
 
 func (c Configuration) GetConsumerMetricsPort() string {
 	return fmt.Sprintf("%d", c.ConsumerService.MetricsPort)
+}
+
+func (c Configuration) GetConsumerProfilingPort() string {
+	return fmt.Sprintf("%d", c.ConsumerService.ProfilingPort)
 }
 
 func (c Configuration) GetConsumerLogLevel() string {

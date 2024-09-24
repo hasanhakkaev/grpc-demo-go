@@ -19,14 +19,16 @@ consumerService:
   messageConsumptionRate: 1
   logLevel: debug
   logEncoding: json
-  metricsPort: 4317
+  metricsPort: 4040
+  profilingPort: 6060
 
 producerService:
   messageProductionRate: 10
-  maxBacklog: 100
+  maxBacklog: 10000
   logLevel: info
   logEncoding: console
-  metricsPort: 4000
+  metricsPort: 4041
+  profilingPort: 6061
 
 server:
   name: yqapp-demo-server

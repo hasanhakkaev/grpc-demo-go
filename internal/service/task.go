@@ -22,6 +22,13 @@ import (
 )
 
 var (
+	taskTypeSums = make(map[int]uint32)
+
+	receivedTasks = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "tasks_received_total",
+		Help: "The total number of received tasks",
+	})
+
 	processingTasks = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "tasks_processing_total",
 		Help: "The total number of tasks being processed",
@@ -101,14 +108,20 @@ func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRe
 	// After persisting task in DB
 	taskChannel <- domainTask
 
+	receivedTasks.Inc()
+
 	limiter := rate.NewLimiter(1, 1)
 
 	go svc.ConsumeTasks(taskChannel, limiter)
 
 	span.AddEvent("Task in the database persisted!")
 	svc.logger.Log(svc.logger.Level(), "Task in the database persisted!")
+
 	processingTasks.Inc()
+	receivedTasks.Dec()
+
 	svc.logger.Log(svc.logger.Level(), "Returning created task", zap.Int("task.id", int(dbTaskID)))
+
 	return domain.FromDomainToProto(domainTask), nil
 
 }
@@ -162,11 +175,15 @@ func (svc *TaskService) ProcessTask(ctx context.Context, task *domain.Task) erro
 	taskTypeCount.WithLabelValues(fmt.Sprintf("%d", task.Type)).Inc()
 	taskValueSum.WithLabelValues(fmt.Sprintf("%d", task.Type)).Add(float64(task.Value))
 
-	// Log the final task content and total sum for that type
-	//totalSum := taskValueSum.WithLabelValues(fmt.Sprintf("%d", task.Type))
+	taskTypeSums[int(task.Type)] += task.Value
 
 	svc.logger.Info("Task processed", zap.Int("id", int(task.ID)),
 		zap.Int("type", int(task.Type)), zap.Int("value", int(task.Value)))
+
+	svc.logger.Log(svc.logger.Level(), "Task's content: ", zap.Any("task", task))
+
+	svc.logger.Log(svc.logger.Level(), "Sum of task values of type : ", zap.Int("type:", int(task.Type)), zap.Int("Sum", int(taskTypeSums[int(task.Type)])))
+
 	return nil
 }
 

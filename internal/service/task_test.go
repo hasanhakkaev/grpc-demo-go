@@ -36,6 +36,7 @@ func (suite *TasksServiceTestSuite) SetupTest() {
 	suite.Require().NoError(err)
 
 	err = database.MigrateModels("postgres:postgres@localhost:5432/postgres")
+	suite.Require().NoError(err)
 
 	suite.db, err = database.NewPostgres("yqapp_demo_user:myS3cr3tP4ssw0rd@localhost:5432/postgres")
 	suite.Require().NoError(err)
@@ -43,7 +44,7 @@ func (suite *TasksServiceTestSuite) SetupTest() {
 	suite.Require().NoError(err)
 	queries := database.New(suite.db.DB)
 
-	suite.service = NewTaskService(suite.logger, queries, noop.NewMeterProvider().Meter(""))
+	suite.service = NewTaskService(suite.logger, queries, noop.NewMeterProvider().Meter(""), nil)
 }
 
 func (suite *TasksServiceTestSuite) TearDownTest() {

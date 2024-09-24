@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"time"
@@ -48,12 +49,19 @@ type Server struct {
 	closer        []io.Closer
 	cfg           conf.Configuration
 	metricsServer *http.Server
+	pprofServer   *http.Server
 }
 
 // Run serves the application services.
 func (s Server) Run(ctx context.Context) error {
 	go s.checkHealth(ctx)
+
+	s.logger.Log(s.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", s.cfg.GetProducerMetricsPort()))
 	go s.serveMetrics()
+
+	s.logger.Log(s.logger.Level(), "Starting Pprof endpoint /debug/pprof", zap.String("port", s.cfg.GetProducerProfilingPort()))
+
+	go s.servePprof()
 
 	s.logger.Info("Running Server")
 	return s.grpc.Serve(s.listener)
@@ -106,5 +114,12 @@ func (s Server) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus
 func (s Server) serveMetrics() {
 	if err := s.metricsServer.ListenAndServe(); err != nil {
 		s.logger.Error("failed to listen and server to metrics server", zap.Error(err))
+	}
+}
+
+func (s *Server) servePprof() {
+	// Start the HTTP server for pprof on a specific port (e.g., 6060)
+	if err := s.pprofServer.ListenAndServe(); err != nil {
+		log.Println("pprof server failed:", err)
 	}
 }

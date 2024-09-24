@@ -1,0 +1,70 @@
+{
+  "title": "Task Monitoring Dashboard",
+  "panels": [
+    {
+      "type": "bargauge",
+      "title": "Messages in Each State",
+      "targets": [
+        {
+          "expr": "sum(tasks_received_total)",
+          "legendFormat": "Received"
+        },
+        {
+          "expr": "sum(tasks_processing_total)",
+          "legendFormat": "Processing"
+        },
+        {
+          "expr": "sum(tasks_done_total)",
+          "legendFormat": "Done"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Service Status (Up/Down)",
+      "targets": [
+        {
+          "expr": "up{job=\"producer\"}",
+          "legendFormat": "Producer"
+        },
+        {
+          "expr": "up{job=\"consumer\"}",
+          "legendFormat": "Consumer"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "1": { "text": "UP" },
+                "0": { "text": "DOWN" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Total Sum of Value per Task Type",
+      "targets": [
+        {
+          "expr": "sum by(type) (task_value_sum_per_type)",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Total Processed Tasks per Task Type",
+      "targets": [
+        {
+          "expr": "sum by(type) (taskTypeCount)",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    }
+  ]
+}

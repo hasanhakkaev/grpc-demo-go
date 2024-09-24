@@ -9,7 +9,7 @@ func Run(s Client) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	s.logger.Debug("Running consumer...")
-	if err := s.Run(ctx); err != nil {
+	if err := s.Run(); err != nil {
 		return err
 	}
 	return s.Shutdown(ctx)
