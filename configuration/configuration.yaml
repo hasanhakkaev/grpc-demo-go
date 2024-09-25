@@ -16,15 +16,15 @@ database:
   database: postgres
 
 consumerService:
-  messageConsumptionRate: 1500
+  messageConsumptionRate: 200
   logLevel: debug
   logEncoding: console
   metricsPort: 4040
   profilingPort: 6060
 
 producerService:
-  messageProductionRate: 1000000
-  maxBacklog: 100000000
+  messageProductionRate: 400
+  maxBacklog: 1000000
   logLevel: debug
   logEncoding: console
   metricsPort: 4041

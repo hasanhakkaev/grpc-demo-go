@@ -19,15 +19,17 @@ type Postgres struct {
 var ctx = context.Background()
 
 func NewPostgres(dsn string) (*Postgres, error) {
+	config, _ := pgxpool.ParseConfig("postgres://" + dsn + "?sslmode=disable")
+	//config.MaxConns = int32(10 * runtime.NumCPU())
 
-	db, err := pgxpool.New(ctx, "postgres://"+dsn+"?sslmode=disable")
+	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
 
 	return &Postgres{
-		DB: db,
+		DB: pool,
 	}, nil
 }
 

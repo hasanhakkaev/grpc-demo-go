@@ -56,6 +56,21 @@ services:
       timeout: 2s
       retries: 5
 
+  db-exporter:
+    container_name: postgres-exporter
+    image: quay.io/prometheuscommunity/postgres-exporter
+    ports:
+      - "9187:9187"
+    environment:
+        DATA_SOURCE_USER: "postgres"
+        DATA_SOURCE_PASS: "postgres"
+        DATA_SOURCE_URI: "host.docker.internal:5432/postgres?sslmode=disable"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - monitoring
+
 networks:
   monitoring:
     name: "monitoring"

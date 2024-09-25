@@ -20,3 +20,8 @@ scrape_configs:
     scheme: http
     static_configs:
       - targets: [ 'host.docker.internal:4041' ]
+
+  - job_name: 'postgres-exporter'
+    honor_timestamps: true
+    static_configs:
+      - targets: [ 'host.docker.internal:9187' ]

@@ -10,7 +10,7 @@ BUILD_TIME := $(shell date +%Y-%m-%dT%H:%M:%S)
 PPROF_HOST ?= localhost
 PPROF_PRODUCER_PORT ?= 6061
 PPROF_CONSUMER_PORT ?= 6060
-FLAMEGRAPH_DIR = /path/to/FlameGraph  # Update this path to where you cloned FlameGraph
+FLAMEGRAPH_DIR = /tmp/FlameGraph  # Update this path to where you cloned FlameGraph
 PROFILE_DURATION ?= 30s  # Default profile duration
 
 ## help: print this help message
@@ -26,13 +26,26 @@ lint:
 .PHONY: run/producer
 run/producer:
 	@echo "Running task producer.."
-	@GOGC=50 GOMEMLIMIT=4096MiB go run cmd/producer/main.go
+	@go run cmd/producer/main.go
 
 ## Run consumer
 .PHONY: run/consumer
 run/consumer:
 	@echo "Running task consumer.."
-	@GOGC=50 GOMEMLIMIT=4096MiB go run cmd/consumer/main.go
+	@go run cmd/consumer/main.go
+
+## Run producer
+.PHONY: run/producer/512
+run/producer/512:
+	@echo "Running task producer.."
+	@GOGC=25 GOMEMLIMIT=2048MiB go run cmd/producer/main.go
+
+## Run consumer
+.PHONY: run/consumer/512
+run/consumer/512:
+	@echo "Running task consumer.."
+	@GOGC=25 GOMEMLIMIT=2048MiB go run cmd/consumer/main.go
+
 
 ## Build producer
 .PHONY: build/producer
@@ -48,22 +61,45 @@ build/consumer:
 	@go build  -ldflags="-s -w -X main.Version=$(CONSUMER_VERSION) -X main.BuildTime=$(BUILD_TIME)"  -o consumer cmd/consumer/main.go
 	@ls -lah consumer
 
-### Deploy docker
-.PHONY: deploy
-deploy:
-	@echo "Deploying locally with docker-compose"
+## Docker build
+.PHONY: docker/build
+docker/build:
+	@echo "Build producer and consumer containers"
 	@DOCKER_BUILDKIT=1 \
 	PRODUCER_VERSION=$(PRODUCER_VERSION)\
  	CONSUMER_VERSION=$(CONSUMER_VERSION)\
  	BUILD_TIME=${BUILD_TIME}\
  	docker-compose -f deployment/docker/docker-compose.yaml build
 
-	@docker-compose -f deployment/docker/docker-compose.yaml up --abort-on-container-exit --remove-orphans --force-recreate
+## Docker run
+docker/run:
+	@echo "Running entire stack with db and monitoring"
+	@@docker-compose -f deployment/docker/docker-compose.yaml up -d  --remove-orphans --force-recreate
 
 .PHONY: view-flamegraph-consumer
 view-flamegraph-consumer:
 	@echo "Opening flamegraph in the browser..."
 	@open cpu_flamegraph.svg
+
+### FlameGraph Install
+#.PHONY: flamegraph/install
+#flamegraph/install:
+#	@git clone https://github.com/brendangregg/FlameGraph.git ${FLAMEGRAPH_DIR} || echo "FlameGraph already cloned"
+#
+#.PHONY: flamegraph/consumer
+#flamegraph/consumer:
+#	@echo "Capturing CPU profile for $(PROFILE_DURATION)..."
+#	@go tool pprof -raw  http://$(PPROF_HOST):$(PPROF_CONSUMER_PORT)/debug/pprof/profile?seconds=$(PROFILE_DURATION)  > cpu_profile.pb.gz
+#	@echo "Converting pprof data to folded format..."
+#	@go tool pprof -raw -output=cpu_profile.folded http://$(PPROF_HOST):$(PPROF_CONSUMER_PORT)/debug/pprof/profile
+#	@echo "Generating flamegraph from folded data..."
+#	@cat cpu_profile.folded | $(FLAMEGRAPH_DIR)/flamegraph.pl > cpu_flamegraph.svg
+#	@echo "Flamegraph generated: cpu_flamegraph.svg"
+#
+#.PHONY: flamegraph/consumer-show
+#flamegraph/consumer-show: flamegraph/consumer
+#	@echo "Opening flamegraph in the browser..."
+#	@open cpu_flamegraph.svg  # Or use xdg-open for Linux
 
 .PHONY: generate
 generate:
