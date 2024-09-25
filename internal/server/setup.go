@@ -77,7 +77,7 @@ func NewDSNFromConfig(db conf.Database) string {
 
 // Setup creates a new application using the given ServerConfig.
 func Setup(cfg conf.Configuration) (Server, error) {
-	taskChannel := make(chan *domain.Task, 100) // Buffered channel, size 100
+	//taskChannel := make(chan *domain.Task, 100) // Buffered channel, size 100
 
 	telemeter, err := telemetry.SetupTelemetry(cfg, "consumer")
 	if err != nil {
@@ -104,6 +104,8 @@ func Setup(cfg conf.Configuration) (Server, error) {
 
 	taskLimiter := rate.NewLimiter(rate.Limit(cfg.ConsumerService.MessageConsumptionRate), 1)
 
+	taskChannel := make(chan *domain.Task, cfg.ProducerService.MaxBacklog)
+
 	srv := grpc.NewServer(interceptors.NewServerInterceptors(telemeter)...)
 	reflection.Register(srv)
 
@@ -118,7 +120,7 @@ func Setup(cfg conf.Configuration) (Server, error) {
 	}
 
 	pprofServer := &http.Server{
-		Addr:    fmt.Sprintf(":%s", cfg.GetConsumerProfilingPort()),
+		Addr:    fmt.Sprintf("0.0.0.0:%s", cfg.GetConsumerProfilingPort()),
 		Handler: http.DefaultServeMux,
 	}
 
@@ -126,17 +128,19 @@ func Setup(cfg conf.Configuration) (Server, error) {
 		grpc:          srv,
 		listener:      l,
 		logger:        telemeter.Logger,
-		meterProvider: telemeter.MeterProvider,
 		db:            db,
 		services:      svc,
-		metricsServer: metricsServer,
+		meterProvider: telemeter.MeterProvider,
 		shutdown: []shutDowner{
 			telemeter.MeterExporter,
 		},
 		closer: []io.Closer{
 			metricsServer,
 		},
-		cfg:         cfg,
-		pprofServer: pprofServer,
+		cfg:           cfg,
+		metricsServer: metricsServer,
+		pprofServer:   pprofServer,
+		taskChannel:   taskChannel,
+		taskLimiter:   taskLimiter,
 	}, nil
 }

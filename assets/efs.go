@@ -2,5 +2,5 @@ package assets
 
 import "embed"
 
-//go:embed "migrations" "configuration.yaml"
+//go:embed "migrations"
 var EmbeddedFiles embed.FS

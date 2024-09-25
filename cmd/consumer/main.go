@@ -36,8 +36,8 @@ func main() {
 	if err != nil {
 		log.Fatalln("setup consumer failed", err)
 	}
-	if err := server.Run(s); err != nil {
-		log.Fatalln("run consumer failed", err)
+	if err = server.Run(s); err != nil {
+		//log.Fatalln("run consumer failed", err)
 	}
 	log.Println("Closing consumer...")
 }

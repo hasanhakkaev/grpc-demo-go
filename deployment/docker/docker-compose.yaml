@@ -1,0 +1,132 @@
+services:
+  consumer:
+    image: "yqapp-demo/consumer"
+    build:
+      context: ../..
+      dockerfile: build/consumer.Dockerfile
+      args:
+        CONSUMER_VERSION: $CONSUMER_VERSION
+        BUILD_TIME: $BUILD_TIME
+    environment:
+      CONSUMER_VERSION: $CONSUMER_VERSION
+      BUILD_TIME: $BUILD_TIME
+      CONFIG_ENV: prod
+    volumes:
+      - ./configuration/:/etc/yqapp-demo
+    container_name: consumer
+    ports:
+      - "50051:50051"
+      - "4040:4040"
+      - "6060:6060"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      grafana:
+        condition: service_started
+    networks:
+      - persistence
+      - monitoring
+
+  producer:
+    image: "yqapp-demo/producer"
+    build:
+      context: ../..
+      dockerfile: build/producer.Dockerfile
+      args:
+        PRODUCER_VERSION: $PRODUCER_VERSION
+        BUILD_TIME: $BUILD_TIME
+    environment:
+      PRODUCER_VERSION: $PRODUCER_VERSION
+      BUILD_TIME: $BUILD_TIME
+      CONFIG_ENV: prod
+    volumes:
+      - ./configuration/:/etc/yqapp-demo
+    container_name: producer
+    ports:
+      - "4041:4041"
+      - "6061:6061"
+    restart: unless-stopped
+    depends_on:
+      consumer:
+        condition: service_started
+      db:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      grafana:
+        condition: service_started
+    networks:
+      - persistence
+      - monitoring
+
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yaml'
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus:/etc/prometheus
+      - prometheus_data:/monitoring/prometheus
+    networks:
+      - monitoring
+    depends_on:
+      db:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=grafana
+    volumes:
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - monitoring
+
+  db:
+    image: postgres:13
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: "postgres"
+      POSTGRES_USER: "postgres"
+      POSTGRES_HOST: "localhost"
+      POSTGRES_DB: "postgres"
+    volumes:
+      - db_data:/tmp/db_data
+    networks:
+      - persistence
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  monitoring:
+    name: "monitoring"
+  persistence:
+    name: "persistence"
+
+volumes:
+  db_data:
+  prometheus_data:
+  events_data:

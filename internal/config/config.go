@@ -1,10 +1,8 @@
 package conf
 
 import (
-	"bytes"
 	_ "embed"
 	"fmt"
-	"github.com/hasanhakkaev/yqapp-demo/assets"
 	_ "github.com/lib/pq"
 	"github.com/spf13/viper"
 	"strings"
@@ -15,17 +13,28 @@ func Read() (*Configuration, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
-	// Configuration file
-	viper.SetConfigType("yaml")
-
-	// Read configuration
-	configuration, err := assets.EmbeddedFiles.ReadFile("configuration.yaml")
-	if err != nil {
-		return nil, err
+	// Use environment variable `CONFIG_ENV` to determine which environment-specific config to load
+	env := viper.GetString("CONFIG_ENV")
+	if env == "" {
+		env = "dev" // Default to 'dev' if not specified
 	}
 
-	if err := viper.ReadConfig(bytes.NewBuffer(configuration)); err != nil {
-		return nil, err
+	// Configuration file setup
+	viper.SetConfigType("yaml")
+	viper.SetConfigName("configuration") // Base configuration file
+	viper.AddConfigPath(".")
+	viper.AddConfigPath("./configuration")
+	viper.AddConfigPath("/etc/yqapp-demo/") // Optionally look in a system-wide path
+
+	// Read the base configuration
+	if err := viper.ReadInConfig(); err != nil {
+		return nil, fmt.Errorf("error reading base configuration: %w", err)
+	}
+
+	// Load environment-specific configuration (e.g., configuration.dev.yaml)
+	viper.SetConfigName(fmt.Sprintf("configuration.%s", env))
+	if err := viper.MergeInConfig(); err != nil {
+		fmt.Printf("No environment-specific configuration found for '%s', continuing with base config.\n", env)
 	}
 
 	// Unmarshal the configuration

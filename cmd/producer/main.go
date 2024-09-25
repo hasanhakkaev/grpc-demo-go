@@ -36,8 +36,8 @@ func main() {
 	if err != nil {
 		log.Fatalln("setup producer failed", err)
 	}
-	if err := client.Run(c); err != nil {
-		log.Fatalln("run producer failed", err)
+	if err = client.Run(c); err != nil {
+		//log.Fatalln("run producer failed", err)
 	}
 	log.Println("Closing producer...")
 }

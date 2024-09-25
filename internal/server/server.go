@@ -5,6 +5,7 @@ import (
 	"errors"
 	conf "github.com/hasanhakkaev/yqapp-demo/internal/config"
 	"github.com/hasanhakkaev/yqapp-demo/internal/database"
+	"github.com/hasanhakkaev/yqapp-demo/internal/domain"
 	"github.com/hasanhakkaev/yqapp-demo/internal/service"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq"
@@ -12,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health"
 	healthv1 "google.golang.org/grpc/health/grpc_health_v1"
 	"io"
@@ -60,6 +62,8 @@ type Server struct {
 	cfg           conf.Configuration
 	metricsServer *http.Server
 	pprofServer   *http.Server
+	taskChannel   chan *domain.Task
+	taskLimiter   *rate.Limiter
 }
 
 // Run serves the application services.
@@ -72,10 +76,10 @@ func (s *Server) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	s.logger.Log(s.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", s.cfg.GetProducerMetricsPort()))
+	s.logger.Log(s.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", s.cfg.GetConsumerMetricsPort()))
 	go s.serveMetrics(ctx)
 
-	s.logger.Log(s.logger.Level(), "Starting Pprof endpoint /debug/pprof", zap.String("port", s.cfg.GetProducerProfilingPort()))
+	s.logger.Log(s.logger.Level(), "Starting Pprof endpoint /debug/pprof", zap.String("port", s.cfg.GetConsumerProfilingPort()))
 	go s.servePprof(ctx)
 
 	s.logger.Log(s.logger.Level(), "Starting Consumer Service /debug/pprof", zap.Uint16("port", s.cfg.Server.Port))
@@ -96,7 +100,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	markServiceDown()
 
-	err := s.Shutdown(context.Background())
+	err := s.Shutdown(ctx)
 	if err != nil {
 		return err
 	}
@@ -122,7 +126,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	defer func(db *pgxpool.Pool, ctx context.Context) {
 		db.Close()
-	}(s.db.DB, context.Background())
+	}(s.db.DB, ctx)
 
 	return err
 }
@@ -133,14 +137,14 @@ func (s *Server) checkHealth(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
-		s.services.Health.SetServingStatus("app.db", s.checkDatabaseHealth())
+		s.services.Health.SetServingStatus("app.db", s.checkDatabaseHealth(ctx))
 		time.Sleep(10 * time.Second)
 	}
 }
 
-func (s *Server) checkDatabaseHealth() healthv1.HealthCheckResponse_ServingStatus {
+func (s *Server) checkDatabaseHealth(ctx context.Context) healthv1.HealthCheckResponse_ServingStatus {
 	state := healthv1.HealthCheckResponse_SERVING
-	err := s.db.DB.Ping(context.Background())
+	err := s.db.DB.Ping(ctx)
 	if err != nil {
 		state = healthv1.HealthCheckResponse_NOT_SERVING
 	}
@@ -161,7 +165,7 @@ func (s *Server) serveMetrics(ctx context.Context) {
 
 	// Gracefully shut down the metrics server
 	s.logger.Log(s.logger.Level(), "Shutting down metrics server...")
-	if err := s.metricsServer.Shutdown(context.Background()); err != nil {
+	if err := s.metricsServer.Shutdown(ctx); err != nil {
 		s.logger.Error("Error during metrics server shutdown", zap.Error(err))
 	}
 }
@@ -177,7 +181,7 @@ func (s *Server) startService(ctx context.Context) {
 
 	// Gracefully shut down the metrics server
 	s.logger.Log(s.logger.Level(), "Shutting down consumer service...")
-	if err := s.metricsServer.Shutdown(context.Background()); err != nil {
+	if err := s.metricsServer.Shutdown(ctx); err != nil {
 		s.logger.Error("Error during consumer service shutdown", zap.Error(err))
 	}
 }
@@ -195,7 +199,7 @@ func (s *Server) servePprof(ctx context.Context) {
 
 	// Gracefully shut down the metrics server
 	s.logger.Log(s.logger.Level(), "Shutting down pprof server...")
-	if err := s.pprofServer.Shutdown(context.Background()); err != nil {
+	if err := s.pprofServer.Shutdown(ctx); err != nil {
 		s.logger.Error("Error during metrics pprof shutdown", zap.Error(err))
 	}
 }

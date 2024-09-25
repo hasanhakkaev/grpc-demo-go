@@ -61,10 +61,10 @@ func (c *Client) Run(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	c.logger.Log(c.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", c.cfg.GetConsumerMetricsPort()))
+	c.logger.Log(c.logger.Level(), "Starting Metrics endpoint /metrics", zap.String("port", c.cfg.GetProducerMetricsPort()))
 	go c.serveMetrics(ctx)
 
-	c.logger.Log(c.logger.Level(), "Starting Pprof endpoint /metrics", zap.String("port", c.cfg.GetConsumerProfilingPort()))
+	c.logger.Log(c.logger.Level(), "Starting Pprof endpoint /metrics", zap.String("port", c.cfg.GetProducerProfilingPort()))
 	go c.servePprof(ctx)
 
 	c.logger.Log(c.logger.Level(), "Running Client")
@@ -81,15 +81,6 @@ func (c *Client) Run(ctx context.Context) error {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
-	//err := c.ProduceTasks(context.Background(), int(c.cfg.ProducerService.MaxBacklog))
-	//if err != nil {
-	//	log.Fatalf("Error producing tasks: %v", err)
-	//}
-	//
-	//<-sigs
-	//c.logger.Log(c.logger.Level(), "Received shutdown signal")
-	//
-	//cancel()
 	select {
 	case sig := <-sigs:
 		// Received shutdown signal (SIGINT or SIGTERM)
@@ -113,7 +104,7 @@ func (c *Client) Run(ctx context.Context) error {
 
 	markServiceDown()
 
-	err := c.Shutdown(context.Background())
+	err := c.Shutdown(ctx)
 	if err != nil {
 		return err
 	}
@@ -141,10 +132,6 @@ func (c *Client) Shutdown(ctx context.Context) error {
 }
 
 func (c *Client) serveMetrics(ctx context.Context) {
-	//if err := c.metricsServer.ListenAndServe(); err != nil {
-	//	c.logger.Error("failed to listen and server to metrics server", zap.Error(err))
-	//}
-
 	// Start the server in a separate goroutine
 	go func() {
 		c.logger.Log(c.logger.Level(), "Metrics server started", zap.String("port", c.cfg.GetProducerMetricsPort()))
@@ -158,16 +145,14 @@ func (c *Client) serveMetrics(ctx context.Context) {
 
 	// Gracefully shut down the metrics server
 	c.logger.Log(c.logger.Level(), "Shutting down metrics server...")
-	if err := c.metricsServer.Shutdown(context.Background()); err != nil {
+	if err := c.metricsServer.Shutdown(ctx); err != nil {
 		c.logger.Error("Error during metrics server shutdown", zap.Error(err))
 	}
 }
 
 func (c *Client) servePprof(ctx context.Context) {
 	// Start the HTTP server for pprof on a specific port (e.g., 6060)
-	//if err := c.pprofServer.ListenAndServe(); err != nil {
-	//	log.Println("pprof server failed:", err)
-	//}
+
 	go func() {
 		c.logger.Log(c.logger.Level(), "Pprof server started", zap.String("port", c.cfg.GetProducerProfilingPort()))
 		if err := c.pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -180,7 +165,7 @@ func (c *Client) servePprof(ctx context.Context) {
 
 	// Gracefully shut down the metrics server
 	c.logger.Log(c.logger.Level(), "Shutting down pprof server...")
-	if err := c.pprofServer.Shutdown(context.Background()); err != nil {
+	if err := c.pprofServer.Shutdown(ctx); err != nil {
 		c.logger.Error("Error during metrics pprof shutdown", zap.Error(err))
 	}
 }

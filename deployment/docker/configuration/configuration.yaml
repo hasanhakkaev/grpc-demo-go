@@ -1,0 +1,41 @@
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  environment: production
+
+logger:
+  enabled: true
+  environment: production
+
+database:
+  host: postgres
+  port: 5432
+  engine: postgres
+  username: postgres
+  password: postgres
+  database: postgres
+
+consumerService:
+  messageConsumptionRate: 100000
+  logLevel: debug
+  logEncoding: json
+  metricsPort: 4040
+  profilingPort: 6060
+
+producerService:
+  messageProductionRate: 1000
+  maxBacklog: 100000000
+  logLevel: debug
+  logEncoding: json
+  metricsPort: 4041
+  profilingPort: 6061
+
+server:
+  name: yqapp-demo-server
+  environment: production
+  host: consumer
+  port: 50051
+
+client:
+  name: yqapp-demo-client
+  environment: production

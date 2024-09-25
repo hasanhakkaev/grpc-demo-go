@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel/metric"
 	"golang.org/x/time/rate"
+	"sync"
 	"time"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -21,7 +22,8 @@ import (
 )
 
 var (
-	taskTypeSums = make(map[int]uint32)
+	taskTypeSums   = make(map[int]uint32)
+	taskTypeSumsMu sync.Mutex // Mutex to protect taskTypeSums map
 
 	receivedTasks = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "tasks_received_total",
@@ -84,7 +86,7 @@ func NewTaskService(logger *zap.Logger, queries *database.Queries, meter metric.
 }
 
 func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRequest) (*v1.Task, error) {
-	taskChannel := make(chan *domain.Task, 100) // Buffered channel
+	//taskChannel := make(chan *domain.Task, 100) // Buffered channel
 
 	svc.logger.Log(svc.logger.Level(), "Received task creation request")
 
@@ -110,11 +112,11 @@ func (svc *TaskService) CreateTask(ctx context.Context, request *v1.CreateTaskRe
 	domainTask.ID = uint32(dbTaskID)
 
 	// After persisting task in DB
-	taskChannel <- domainTask
+	svc.taskChannel <- domainTask
 
 	receivedTasks.Inc()
 
-	go svc.ConsumeTasks(taskChannel, svc.taskLimiter)
+	go svc.ConsumeTasks(svc.taskChannel, svc.taskLimiter)
 
 	svc.logger.Log(svc.logger.Level(), "Task in the database persisted!")
 
@@ -178,7 +180,10 @@ func (svc *TaskService) ProcessTask(ctx context.Context, task *domain.Task) erro
 	taskTypeCount.WithLabelValues(fmt.Sprintf("%d", task.Type)).Inc()
 	taskValueSum.WithLabelValues(fmt.Sprintf("%d", task.Type)).Add(float64(task.Value))
 
+	// Use mutex to protect access to taskTypeSums
+	taskTypeSumsMu.Lock()
 	taskTypeSums[int(task.Type)] += task.Value
+	taskTypeSumsMu.Unlock()
 
 	svc.logger.Log(svc.logger.Level(), "Task processed", zap.Int("id", int(task.ID)),
 		zap.Int("type", int(task.Type)), zap.Int("value", int(task.Value)))

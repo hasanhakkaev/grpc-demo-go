@@ -5,7 +5,13 @@ DB_DSN ?= postgres:postgres@localhost:5432/postgres?sslmode=disable
 
 PRODUCER_VERSION := $(shell git rev-parse --short HEAD)
 CONSUMER_VERSION := $(shell git rev-parse --short HEAD)
-BUILDTIME := $(shell date +%Y-%m-%dT%H:%M:%S)
+BUILD_TIME := $(shell date +%Y-%m-%dT%H:%M:%S)
+
+PPROF_HOST ?= localhost
+PPROF_PRODUCER_PORT ?= 6061
+PPROF_CONSUMER_PORT ?= 6060
+FLAMEGRAPH_DIR = /path/to/FlameGraph  # Update this path to where you cloned FlameGraph
+PROFILE_DURATION ?= 30s  # Default profile duration
 
 ## help: print this help message
 .PHONY: help
@@ -20,50 +26,44 @@ lint:
 .PHONY: run/producer
 run/producer:
 	@echo "Running task producer.."
-	@go run cmd/producer/main.go
+	@GOGC=50 GOMEMLIMIT=4096MiB go run cmd/producer/main.go
 
 ## Run consumer
 .PHONY: run/consumer
 run/consumer:
 	@echo "Running task consumer.."
-	@go run cmd/consumer/main.go
+	@GOGC=50 GOMEMLIMIT=4096MiB go run cmd/consumer/main.go
 
 ## Build producer
 .PHONY: build/producer
 build/producer:
 	@echo "Building task producer.."
-	@go build -ldflags="-s -w -X main.Version=$(PRODUCER_VERSION) -X main.BuildTime=$(BUILDTIME)" -o producer cmd/producer/main.go
+	@go build -ldflags="-s -w -X main.Version=$(PRODUCER_VERSION) -X main.BuildTime=$(BUILD_TIME)" -o producer cmd/producer/main.go
 	@ls -lah producer
 
 ## Build consumer
 .PHONY: build/consumer
 build/consumer:
 	@echo "Building task consumer.."
-	@go build  -ldflags="-s -w -X main.Version=$(CONSUMER_VERSION) -X main.BuildTime=$(BUILDTIME)"  -o consumer cmd/consumer/main.go
+	@go build  -ldflags="-s -w -X main.Version=$(CONSUMER_VERSION) -X main.BuildTime=$(BUILD_TIME)"  -o consumer cmd/consumer/main.go
 	@ls -lah consumer
 
+### Deploy docker
+.PHONY: deploy
+deploy:
+	@echo "Deploying locally with docker-compose"
+	@DOCKER_BUILDKIT=1 \
+	PRODUCER_VERSION=$(PRODUCER_VERSION)\
+ 	CONSUMER_VERSION=$(CONSUMER_VERSION)\
+ 	BUILD_TIME=${BUILD_TIME}\
+ 	docker-compose -f deployment/docker/docker-compose.yaml build
 
-### Test
-#.PHONY: test
-#test:
-#	@docker compose -f test/docker-compose.yml down -v
-#	@docker compose -f test/docker-compose.yml up --build --abort-on-container-exit --remove-orphans --force-recreate
-#	@docker compose -f test/docker-compose.yml down -v
-#
-### Stack
-#.PHONY:	stop
-#stop:
-#	@docker compose -f stack.yml down -v
-#
-#.PHONY:	prod
-#prod:
-#	@docker compose -f stack.yml down -v
-#	@docker compose -f stack.yml up --build
-#
-#.PHONY: dev
-#dev:
-#	@docker compose -f stack.yml down -v
-#	@docker compose -f stack.yml -f stack.dev.yml up
+	@docker-compose -f deployment/docker/docker-compose.yaml up --abort-on-container-exit --remove-orphans --force-recreate
+
+.PHONY: view-flamegraph-consumer
+view-flamegraph-consumer:
+	@echo "Opening flamegraph in the browser..."
+	@open cpu_flamegraph.svg
 
 .PHONY: generate
 generate:
@@ -81,9 +81,9 @@ migrations/down:
 	go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest -path=./assets/migrations -database="postgres://${DB_DSN}" down
 
 ## start/infra: start Docker stack
-start/infra:
-	@docker-compose -f deployment/local/docker-compose.yaml up -d
+start/services:
+	@docker-compose -f deployment/docker/services.yaml up -d --remove-orphans
 
 ## stop/infra: stop Docker Stack
-stop/infra:
-	@docker-compose  -f deployment/local/docker-compose.yaml down
+stop/services:
+	@docker-compose  -f deployment/docker/services.yaml down

@@ -12,6 +12,9 @@ services:
       - prometheus_data:/monitoring/prometheus
     networks:
       - monitoring
+    depends_on:
+      db:
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana
@@ -26,7 +29,9 @@ services:
       - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
-
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - monitoring
 
@@ -45,6 +50,11 @@ services:
       - db_data:/tmp/db_data
     networks:
       - persistence
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
 
 networks:
   monitoring:
